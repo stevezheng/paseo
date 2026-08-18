@@ -117,6 +117,7 @@ npx skills add getpaseo/paseo
 
 然后在任意 agent 对话中使用：
 
+- `/paseo-apply` — 基于依赖关系、独立 worktree、分层审查和 Lead 集成来实施 OpenSpec change。
 - `/paseo-handoff` — 在 agents 之间交接工作。我会用它先和 Claude 规划，再交给 Codex 实现。
 - `/paseo-advisor` — 启动单个 agent 作为 advisor，提供第二意见，但不把工作委托出去。
 - `/paseo-committee` — 组建两个风格互补的 agents，让它们后退一步做根因分析并产出计划。

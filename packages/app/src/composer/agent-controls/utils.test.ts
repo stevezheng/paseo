@@ -5,6 +5,8 @@ import {
   getAgentControlHintKey,
   normalizeModelId,
   resolveRelativeAgentControlId,
+  resolveFavoriteModelCycle,
+  favoriteModelsForCycle,
   resolveAgentModelSelection,
 } from "./utils";
 
@@ -40,6 +42,164 @@ describe("resolveRelativeAgentControlId", () => {
   it("returns null when there is no second model", () => {
     expect(
       resolveRelativeAgentControlId({ options: [{ id: "a" }], selectedId: "a", delta: 1 }),
+    ).toBeNull();
+  });
+});
+
+describe("favoriteModelsForCycle", () => {
+  const profiles = [
+    { id: "sol", provider: "codex", model: "gpt-5.6-sol", cycle: true },
+    { id: "grok", provider: "grok", model: "grok-4.6", cycle: true },
+    { id: "cursor-grok", provider: "cursor", model: "grok-4.6", cycle: true },
+    { id: "composer", provider: "cursor", model: "composer-2.5", cycle: true },
+    { id: "luna", provider: "codex", model: "gpt-5.6-luna" },
+  ];
+
+  it("uses profiles marked cycle: true, ignoring unmarked profiles", () => {
+    expect(favoriteModelsForCycle({ stored: [], profiles })).toEqual([
+      { provider: "codex", modelId: "gpt-5.6-sol", profileId: "sol" },
+      { provider: "grok", modelId: "grok-4.6", profileId: "grok" },
+      { provider: "cursor", modelId: "grok-4.6", profileId: "cursor-grok" },
+      { provider: "cursor", modelId: "composer-2.5", profileId: "composer" },
+    ]);
+  });
+
+  it("uses stored favorites when no profile is marked cycle", () => {
+    expect(
+      favoriteModelsForCycle({
+        stored: [{ provider: "grok", modelId: "grok-4.6" }],
+        profiles: [{ id: "luna", provider: "codex", model: "gpt-5.6-luna" }],
+      }),
+    ).toEqual([{ provider: "grok", modelId: "grok-4.6" }]);
+  });
+
+  it("skips cycle profiles without a model and duplicate provider+model pairs", () => {
+    expect(
+      favoriteModelsForCycle({
+        stored: undefined,
+        profiles: [
+          { id: "grok", provider: "grok", cycle: true },
+          { id: "composer-spaced", provider: "cursor", model: " composer-2.5 ", cycle: true },
+          { id: "composer", provider: "cursor", model: "composer-2.5", cycle: true },
+        ],
+      }),
+    ).toEqual([{ provider: "cursor", modelId: "composer-2.5", profileId: "composer-spaced" }]);
+  });
+});
+
+describe("resolveFavoriteModelCycle", () => {
+  const favorites = [
+    { provider: "grok", modelId: "grok-4.6" },
+    { provider: "cursor", modelId: "grok-4.6" },
+    { provider: "cursor", modelId: "composer-2.5" },
+    { provider: "codex", modelId: "gpt-5.6-sol" },
+  ];
+
+  it("advances across providers on Ctrl+Shift+M", () => {
+    expect(
+      resolveFavoriteModelCycle({
+        actionId: "message-input.model-cycle",
+        favoriteModels: favorites,
+        selectedProvider: "grok",
+        selectedModelId: "grok-4.6",
+        canSwitchProvider: true,
+      }),
+    ).toEqual({ provider: "cursor", modelId: "grok-4.6" });
+  });
+
+  it("keeps the profile identity when cycling to Luna", () => {
+    expect(
+      resolveFavoriteModelCycle({
+        actionId: "message-input.model-cycle",
+        favoriteModels: [
+          { provider: "codex", modelId: "gpt-5.6-sol", profileId: "sol" },
+          { provider: "codex", modelId: "gpt-5.6-luna", profileId: "luna" },
+        ],
+        selectedProvider: "codex",
+        selectedModelId: "gpt-5.6-sol",
+        canSwitchProvider: false,
+      }),
+    ).toEqual({ provider: "codex", modelId: "gpt-5.6-luna", profileId: "luna" });
+  });
+
+  it("shares the next-favorite path with Ctrl+Shift+.", () => {
+    expect(
+      resolveFavoriteModelCycle({
+        actionId: "message-input.favorite-model-next",
+        favoriteModels: favorites,
+        selectedProvider: "cursor",
+        selectedModelId: "grok-4.6",
+        canSwitchProvider: true,
+      }),
+    ).toEqual({ provider: "cursor", modelId: "composer-2.5" });
+  });
+
+  it("wraps to the first favorite", () => {
+    expect(
+      resolveFavoriteModelCycle({
+        actionId: "message-input.model-cycle",
+        favoriteModels: favorites,
+        selectedProvider: "codex",
+        selectedModelId: "gpt-5.6-sol",
+        canSwitchProvider: true,
+      }),
+    ).toEqual({ provider: "grok", modelId: "grok-4.6" });
+  });
+
+  it("moves backward on Ctrl+Shift+,", () => {
+    expect(
+      resolveFavoriteModelCycle({
+        actionId: "message-input.favorite-model-previous",
+        favoriteModels: favorites,
+        selectedProvider: "cursor",
+        selectedModelId: "composer-2.5",
+        canSwitchProvider: true,
+      }),
+    ).toEqual({ provider: "cursor", modelId: "grok-4.6" });
+  });
+
+  it("stays on the current provider when the session cannot switch", () => {
+    expect(
+      resolveFavoriteModelCycle({
+        actionId: "message-input.model-cycle",
+        favoriteModels: favorites,
+        selectedProvider: "cursor",
+        selectedModelId: "grok-4.6",
+        canSwitchProvider: false,
+      }),
+    ).toEqual({ provider: "cursor", modelId: "composer-2.5" });
+  });
+
+  it("no-ops on a live session with only one favorite for that provider", () => {
+    expect(
+      resolveFavoriteModelCycle({
+        actionId: "message-input.model-cycle",
+        favoriteModels: favorites,
+        selectedProvider: "grok",
+        selectedModelId: "grok-4.6",
+        canSwitchProvider: false,
+      }),
+    ).toBeNull();
+  });
+
+  it("no-ops when there are fewer than two favorites", () => {
+    expect(
+      resolveFavoriteModelCycle({
+        actionId: "message-input.model-cycle",
+        favoriteModels: [{ provider: "grok", modelId: "grok-4.6" }],
+        selectedProvider: "grok",
+        selectedModelId: "grok-4.6",
+        canSwitchProvider: true,
+      }),
+    ).toBeNull();
+    expect(
+      resolveFavoriteModelCycle({
+        actionId: "message-input.model-cycle",
+        favoriteModels: [],
+        selectedProvider: "grok",
+        selectedModelId: "grok-4.6",
+        canSwitchProvider: true,
+      }),
     ).toBeNull();
   });
 });

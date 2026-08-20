@@ -495,6 +495,8 @@ Tests use `isProviderAvailable(provider)` to skip when the binary or credentials
 
 ## Gotchas
 
+**Slash commands can arrive before `sessionId` exists.** Grok (and other ACP agents) send `available_commands_update` while `session/new` is still in flight. Paseo assigns `sessionId` from that response. Dropping updates whose session id does not yet match leaves the draft `/` menu empty. Accept session updates while `sessionId` is still null; ignore mismatched ids only after the session exists. Cursor/Kiro/Trae still need `waitForInitialCommands` because they publish commands _after_ `session/new` returns.
+
 **Mode IDs can be URIs.** ACP providers like Copilot use full URIs as mode IDs (e.g., `"https://agentclientprotocol.com/protocol/session-modes#agent"`). Never assume mode IDs are simple strings. The manifest `defaultModeId` must match exactly.
 
 **Models and modes are discovered dynamically.** ACP providers report available models and modes at runtime via the protocol. The static definitions in `provider-manifest.ts` are used for UI scaffolding (icons, color tiers) but the runtime values from the agent process are the source of truth.

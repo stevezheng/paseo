@@ -1,5 +1,6 @@
 import { useCallback, useMemo } from "react";
 import { useTranslation } from "react-i18next";
+import type { AgentFeature } from "@getpaseo/protocol/agent-types";
 import { mergeCreateAgentSelectionPreferences } from "@/create-agent-preferences/preferences";
 import { useFormPreferences } from "@/hooks/use-form-preferences";
 import { useProvidersSnapshot } from "@/hooks/use-providers-snapshot";
@@ -15,6 +16,8 @@ import {
 } from "./materialize-profile";
 import { buildAgentProfileTags } from "./profile-summary";
 import { useAgentProfiles } from "./use-agent-profiles";
+
+const EMPTY_AGENT_FEATURES: readonly AgentFeature[] = [];
 
 /** The draft composer owns profile application as one state transition. */
 export interface DraftAgentProfileControls {
@@ -51,6 +54,7 @@ export interface UseAgentProfilePickerInput {
    * the draft form ignores a provider the host does not offer.
    */
   availableProviders: readonly string[];
+  availableFeatures?: readonly AgentFeature[];
   target: AgentProfileApplyTarget;
 }
 
@@ -63,7 +67,7 @@ export interface UseAgentProfilePickerInput {
 export function useAgentProfilePicker(
   input: UseAgentProfilePickerInput,
 ): AgentProfilePicker | null {
-  const { serverId, availableProviders, target } = input;
+  const { serverId, availableFeatures = EMPTY_AGENT_FEATURES, availableProviders, target } = input;
   const { t } = useTranslation();
   const { profiles, isSupported } = useAgentProfiles(serverId);
   // Profiles are host config, so their labels read from the host-wide catalog
@@ -131,7 +135,7 @@ export function useAgentProfilePicker(
       if (!profile) {
         return;
       }
-      const resolved = materializeAgentProfile(profile);
+      const resolved = materializeAgentProfile(profile, availableFeatures);
 
       if (target.kind === "draft") {
         target.controls.applyProfile(resolved);
@@ -154,7 +158,7 @@ export function useAgentProfilePicker(
           toast.error(toErrorMessage(error));
         });
     },
-    [applicableProfiles, client, persistSelection, target, toast],
+    [applicableProfiles, availableFeatures, client, persistSelection, target, toast],
   );
 
   return useMemo(

@@ -58,15 +58,26 @@ describe("resolveActivePromptSeq", () => {
 describe("resolvePreviousPromptSeq", () => {
   const prompts = [prompt(2), prompt(9), prompt(20)];
 
-  it("returns the prompt immediately before the active prompt", () => {
-    expect(resolvePreviousPromptSeq(prompts, 20)).toBe(9);
-    expect(resolvePreviousPromptSeq(prompts, 9)).toBe(2);
+  it("returns to the top of the turn being read before stepping past it", () => {
+    expect(resolvePreviousPromptSeq(prompts, 20, 31)).toBe(20);
+    expect(resolvePreviousPromptSeq(prompts, 9, 14)).toBe(9);
   });
 
-  it("returns nothing at the first prompt or without a matching active prompt", () => {
-    expect(resolvePreviousPromptSeq(prompts, 2)).toBeNull();
-    expect(resolvePreviousPromptSeq(prompts, null)).toBeNull();
-    expect(resolvePreviousPromptSeq(prompts, 99)).toBeNull();
+  it("returns the prompt immediately before once the reader is parked on a prompt", () => {
+    expect(resolvePreviousPromptSeq(prompts, 20, 20)).toBe(9);
+    expect(resolvePreviousPromptSeq(prompts, 9, 9)).toBe(2);
+  });
+
+  it("returns nothing at the first prompt or above it", () => {
+    expect(resolvePreviousPromptSeq(prompts, 2, 2)).toBeNull();
+    expect(resolvePreviousPromptSeq(prompts, null, 1)).toBeNull();
+    expect(resolvePreviousPromptSeq(prompts, 99, 99)).toBeNull();
+  });
+
+  it("targets the newest prompt when no reading position resolves", () => {
+    expect(resolvePreviousPromptSeq(prompts, null, null)).toBe(20);
+    expect(resolvePreviousPromptSeq([prompt(2)], null, null)).toBe(2);
+    expect(resolvePreviousPromptSeq([], null, null)).toBeNull();
   });
 });
 

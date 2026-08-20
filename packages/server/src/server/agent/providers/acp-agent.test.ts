@@ -2401,6 +2401,58 @@ describe("ACPAgentSession slash commands", () => {
       },
     ]);
   });
+
+  test("keeps available_commands_update that arrives before session/new assigns a session id", async () => {
+    const session = createSessionWithConfig();
+
+    await session.sessionUpdate({
+      sessionId: "session-from-agent",
+      update: {
+        sessionUpdate: "available_commands_update",
+        availableCommands: [
+          {
+            name: "compact",
+            description: "Compress conversation history to save context window",
+            input: { hint: "optional context about what to preserve" },
+          },
+          {
+            name: "context",
+            description: "Show context window usage and session stats",
+          },
+        ],
+      },
+    });
+
+    expect(await session.listCommands()).toEqual([
+      {
+        name: "compact",
+        description: "Compress conversation history to save context window",
+        argumentHint: "optional context about what to preserve",
+        kind: "command",
+      },
+      {
+        name: "context",
+        description: "Show context window usage and session stats",
+        argumentHint: "",
+        kind: "command",
+      },
+    ]);
+  });
+
+  test("ignores available_commands_update for a different session after id is assigned", async () => {
+    const session = createSessionWithConfig();
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+
+    await session.sessionUpdate({
+      sessionId: "other-session",
+      update: {
+        sessionUpdate: "available_commands_update",
+        availableCommands: [{ name: "compact", description: "Compress conversation history" }],
+      },
+    });
+
+    expect(await session.listCommands()).toEqual([]);
+  });
 });
 
 describe("ACPAgentSession", () => {

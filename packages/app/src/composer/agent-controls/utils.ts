@@ -51,6 +51,96 @@ export function resolveRelativeAgentControlId({
   return options[nextIndex]?.id ?? null;
 }
 
+export interface FavoriteModelRef {
+  provider: string;
+  modelId: string;
+  profileId?: string;
+}
+
+function favoriteModelKey(entry: FavoriteModelRef): string {
+  return `${entry.provider}:${entry.modelId}`;
+}
+
+/** Profiles with `cycle: true` win. Then client leftovers. */
+export function favoriteModelsForCycle(input: {
+  stored: readonly FavoriteModelRef[] | undefined;
+  profiles: readonly { id: string; provider: string; model?: string; cycle?: boolean }[] | null;
+}): FavoriteModelRef[] {
+  const cycled: FavoriteModelRef[] = [];
+  const seen = new Set<string>();
+  for (const profile of input.profiles ?? []) {
+    if (profile.cycle !== true) {
+      continue;
+    }
+    const modelId = profile.model?.trim() ?? "";
+    if (!modelId) {
+      continue;
+    }
+    const entry = { provider: profile.provider, modelId, profileId: profile.id };
+    const key = favoriteModelKey(entry);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    cycled.push(entry);
+  }
+  if (cycled.length > 0) {
+    return cycled;
+  }
+  if (input.stored && input.stored.length > 0) {
+    return [...input.stored];
+  }
+  return [];
+}
+
+function favoriteModelCycleDelta(actionId: string): 1 | -1 | null {
+  if (actionId === "message-input.favorite-model-previous") {
+    return -1;
+  }
+  if (
+    actionId === "message-input.favorite-model-next" ||
+    actionId === "message-input.model-cycle"
+  ) {
+    return 1;
+  }
+  return null;
+}
+
+/** Ctrl+Shift+M cycles marked profiles, falling back to legacy favorite models. */
+export function resolveFavoriteModelCycle({
+  actionId,
+  favoriteModels,
+  selectedProvider,
+  selectedModelId,
+  canSwitchProvider,
+}: {
+  actionId: string;
+  favoriteModels: readonly FavoriteModelRef[];
+  selectedProvider: string;
+  selectedModelId: string | null | undefined;
+  canSwitchProvider: boolean;
+}): FavoriteModelRef | null {
+  const delta = favoriteModelCycleDelta(actionId);
+  if (delta === null) {
+    return null;
+  }
+  const options = canSwitchProvider
+    ? favoriteModels
+    : favoriteModels.filter((entry) => entry.provider === selectedProvider);
+  const nextId = resolveRelativeAgentControlId({
+    options: options.map((entry) => ({ id: favoriteModelKey(entry) })),
+    selectedId: favoriteModelKey({
+      provider: selectedProvider,
+      modelId: selectedModelId ?? "",
+    }),
+    delta,
+  });
+  if (nextId === null) {
+    return null;
+  }
+  return options.find((entry) => favoriteModelKey(entry) === nextId) ?? null;
+}
+
 export function getFeatureTooltip(feature: Pick<AgentFeature, "label" | "tooltip">): string {
   return feature.tooltip ?? feature.label;
 }

@@ -50,6 +50,20 @@ describe("materializeAgentProfile", () => {
       "claude-opus-5",
     );
   });
+
+  it("defaults omitted toggle features when applying a profile", () => {
+    expect(
+      materializeAgentProfile(profile({ featureValues: { fast_mode: true } }), [
+        { type: "toggle", id: "fast_mode", label: "Fast", value: true },
+        { type: "toggle", id: "plan_mode", label: "Plan", value: true },
+      ]),
+    ).toMatchObject({ featureValues: { fast_mode: true, plan_mode: false } });
+    expect(
+      materializeAgentProfile(profile({ featureValues: {} }), [
+        { type: "toggle", id: "fast_mode", label: "Fast", value: true },
+      ]),
+    ).toMatchObject({ featureValues: { fast_mode: false } });
+  });
 });
 
 describe("toAgentConfigApply", () => {

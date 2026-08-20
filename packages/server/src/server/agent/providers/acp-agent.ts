@@ -2285,7 +2285,10 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       },
       "provider.acp.raw_event",
     );
-    if (params.sessionId !== this.sessionId) {
+    // Agents such as Grok publish available_commands_update while session/new
+    // is still in flight. sessionId is assigned from that response, so a
+    // strict match here dropped the only command batch draft listing sees.
+    if (this.sessionId !== null && params.sessionId !== this.sessionId) {
       return;
     }
 
@@ -2684,12 +2687,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         this.handleUsageUpdate(update);
         return pendingUserEvents;
       case "available_commands_update":
-        this.cachedCommands = update.availableCommands.map((command) => ({
-          name: command.name,
-          description: command.description,
-          argumentHint: "",
-          kind: "command",
-        }));
+        this.cachedCommands = update.availableCommands.map(mapACPAvailableCommand);
         this.settleCommandsReady();
         return pendingUserEvents;
       default:
@@ -3250,6 +3248,20 @@ function mergeToolSnapshot(
     locations: coalesceDefined(update.locations, previous?.locations, null),
     rawInput: update.rawInput !== undefined ? update.rawInput : previous?.rawInput,
     rawOutput: update.rawOutput !== undefined ? update.rawOutput : previous?.rawOutput,
+  };
+}
+
+type ACPAvailableCommand = Extract<
+  SessionUpdate,
+  { sessionUpdate: "available_commands_update" }
+>["availableCommands"][number];
+
+function mapACPAvailableCommand(command: ACPAvailableCommand): AgentSlashCommand {
+  return {
+    name: command.name,
+    description: command.description,
+    argumentHint: command.input?.hint ?? "",
+    kind: "command",
   };
 }
 

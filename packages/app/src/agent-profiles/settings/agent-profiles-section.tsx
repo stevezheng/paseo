@@ -58,7 +58,15 @@ export function AgentProfilesSection({ serverId }: { serverId: string }): ReactE
       // user cleared, so spreading it over the stored record would silently keep
       // the old model, mode, thinking option or notes.
       const next: AgentProfile[] = editing
-        ? current.map((entry) => (entry.id === editing.id ? { id: entry.id, ...value } : entry))
+        ? current.map((entry) =>
+            entry.id === editing.id
+              ? {
+                  id: entry.id,
+                  ...value,
+                  ...(entry.cycle !== undefined ? { cycle: entry.cycle } : {}),
+                }
+              : entry,
+          )
         : [...current, { id: generateAgentProfileId(), ...value }];
       await saveProfiles(next);
     },

@@ -109,13 +109,16 @@ export function useChatOutline({
 
   // The transcript names the row it is showing; the outline turns that into a prompt using the
   // complete index, so unloaded rows never have to exist in the DOM to be marked.
-  const publishActivePrompt = useStableEvent(() => {
+  const resolveReadingSeq = useStableEvent(() => {
     const rowId = readingRowIdRef.current;
-    const anchorSeq =
-      rowId === null
-        ? null
-        : (loadedItems.find((item) => item.id === rowId)?.timelineCursor?.seq ?? null);
-    activePrompt.publish(resolveActivePromptSeq(prompts, anchorSeq));
+    if (rowId === null) {
+      return null;
+    }
+    return loadedItems.find((item) => item.id === rowId)?.timelineCursor?.seq ?? null;
+  });
+
+  const publishActivePrompt = useStableEvent(() => {
+    activePrompt.publish(resolveActivePromptSeq(prompts, resolveReadingSeq()));
   });
 
   const reportReadingPosition = useStableEvent((rowId: string | null) => {
@@ -179,11 +182,15 @@ export function useChatOutline({
   );
 
   const jumpToPreviousPrompt = useCallback(() => {
-    const previousSeq = resolvePreviousPromptSeq(prompts, activePrompt.getActiveSeq());
+    const previousSeq = resolvePreviousPromptSeq(
+      prompts,
+      activePrompt.getActiveSeq(),
+      resolveReadingSeq(),
+    );
     if (previousSeq === null) return false;
     jumpToPrompt(previousSeq);
     return true;
-  }, [activePrompt, jumpToPrompt, prompts]);
+  }, [activePrompt, jumpToPrompt, prompts, resolveReadingSeq]);
 
   const jumpToNextPrompt = useCallback(() => {
     const nextSeq = resolveNextPromptSeq(prompts, activePrompt.getActiveSeq());

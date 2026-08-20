@@ -35,9 +35,11 @@ const launchTargetSchema: z.ZodType<LaunchTarget> = z.discriminatedUnion("kind",
 export const FormPreferencesSchema = z.strictObject({
   provider: z.string().optional(),
   providerPreferences: z.record(z.string(), providerPreferencesSchema).optional(),
-  // COMPAT(agentProfileFavoriteMigration): favourites were removed in v0.3.2.
-  // Keep the legacy payload alive until every capable host has had a chance to
-  // import it; ordinary preference writes must not erase it first.
+  // Ctrl+Shift+M and Ctrl+Shift+,/. use this list only when no Agent Profile
+  // is marked cycle: true.
+  // COMPAT(agentProfileFavoriteMigration): v0.3.2 copied favourites into agent
+  // profiles; keep this payload so ordinary preference writes do not erase the
+  // cycle set.
   favoriteModels: z
     .array(
       z.strictObject({

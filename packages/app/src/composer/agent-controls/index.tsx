@@ -59,6 +59,8 @@ import {
   getFeatureTooltip,
   getAgentControlHintKey,
   resolveRelativeAgentControlId,
+  resolveFavoriteModelCycle,
+  favoriteModelsForCycle,
   resolveAgentModelSelection,
 } from "@/composer/agent-controls/utils";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -84,6 +86,7 @@ import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
 import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import {
   useAgentProfilePicker,
+  useAgentProfiles,
   type AgentProfileApplyTarget,
   type AgentProfilePicker,
   type DraftAgentProfileControls,
@@ -98,6 +101,10 @@ interface AgentControlOption {
 type AgentControlSelector = "provider" | "mode" | "model" | "thinking" | `feature-${string}`;
 
 const EMPTY_AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [];
+
+function getAgentFeatures(agent: { features?: AgentFeature[] } | null): AgentFeature[] | undefined {
+  return agent?.features;
+}
 
 interface ControlledAgentControlsProps {
   provider: string;
@@ -114,7 +121,6 @@ interface ControlledAgentControlsProps {
   disabled?: boolean;
   isModelLoading?: boolean;
   modelSelectorProviders?: ProviderSelectorProvider[];
-  favoriteKeys?: ReadonlySet<string>;
   agentProfiles?: AgentProfilePicker | null;
   onApplyAgentProfile?: (profileId: string) => void;
   onEditAgentProfiles?: () => void;
@@ -437,40 +443,73 @@ function buildOpenChangeHandler(
 
 function useModelCycleShortcut(input: {
   disabled: boolean;
-  favoriteKeys: ReadonlySet<string>;
   isActiveComposer: boolean;
-  modelOptions: AgentControlOption[] | undefined;
+  onApplyAgentProfile: ((profileId: string) => void) | undefined;
   onSelectModel: ((modelId: string) => void) | undefined;
+  onSelectProviderAndModel: ((provider: string, modelId: string) => void) | undefined;
   provider: string;
   selectedModelId: string | undefined;
+  serverId: string | null;
 }) {
+  const {
+    disabled,
+    isActiveComposer,
+    onApplyAgentProfile,
+    onSelectModel,
+    onSelectProviderAndModel,
+    provider,
+    selectedModelId,
+    serverId,
+  } = input;
+  const { preferences } = useFormPreferences();
+  const { profiles } = useAgentProfiles(serverId);
   const handlerIdRef = useRef(`model-control:${Math.random().toString(36).slice(2)}`);
-  const favoriteModelOptions = input.modelOptions?.filter((model) =>
-    input.favoriteKeys.has(`${input.provider}:${model.id}`),
+  const favoriteModels = useMemo(
+    () =>
+      favoriteModelsForCycle({
+        stored: preferences.favoriteModels,
+        profiles,
+      }),
+    [preferences.favoriteModels, profiles],
   );
+  const canSwitchProvider = Boolean(onSelectProviderAndModel);
   const handle = useCallback(
     (action: KeyboardActionDefinition): boolean => {
-      let delta: 1 | -1 | null = null;
-      if (action.id === "message-input.favorite-model-previous") {
-        delta = -1;
-      } else if (
-        action.id === "message-input.favorite-model-next" ||
-        action.id === "message-input.model-cycle"
-      ) {
-        delta = 1;
+      if (disabled || !isActiveComposer || (!onSelectModel && !onSelectProviderAndModel)) {
+        return false;
       }
-      if (delta === null) return false;
-      if (input.disabled || !input.isActiveComposer || !input.onSelectModel) return false;
-      const nextModelId = resolveRelativeAgentControlId({
-        options: favoriteModelOptions ?? [],
-        selectedId: input.selectedModelId,
-        delta,
+      const next = resolveFavoriteModelCycle({
+        actionId: action.id,
+        favoriteModels,
+        selectedProvider: provider,
+        selectedModelId,
+        canSwitchProvider,
       });
-      if (!nextModelId) return false;
-      input.onSelectModel(nextModelId);
+      if (!next) return false;
+      if (next.profileId && onApplyAgentProfile) {
+        onApplyAgentProfile(next.profileId);
+        return true;
+      }
+      pickDesktopModel({
+        nextProviderId: next.provider,
+        modelId: next.modelId,
+        currentProvider: provider,
+        onSelectModel,
+        onSelectProviderAndModel,
+      });
       return true;
     },
-    [favoriteModelOptions, input],
+    [
+      canSwitchProvider,
+      disabled,
+      favoriteModels,
+      isActiveComposer,
+      onApplyAgentProfile,
+      onSelectModel,
+      onSelectProviderAndModel,
+      provider,
+      selectedModelId,
+    ],
   );
 
   useKeyboardActionHandler({
@@ -481,10 +520,12 @@ function useModelCycleShortcut(input: {
       "message-input.favorite-model-next",
     ],
     enabled:
-      input.isActiveComposer &&
-      !input.disabled &&
-      Boolean(input.onSelectModel) &&
-      (favoriteModelOptions?.length ?? 0) > 1,
+      isActiveComposer &&
+      !disabled &&
+      Boolean(onSelectModel || onSelectProviderAndModel) &&
+      (canSwitchProvider
+        ? favoriteModels.length > 1
+        : favoriteModels.filter((entry) => entry.provider === provider).length > 1),
     priority: 200,
     handle,
   });
@@ -550,7 +591,6 @@ function ControlledAgentControls({
   disabled = false,
   isModelLoading = false,
   modelSelectorProviders,
-  favoriteKeys = new Set<string>(),
   agentProfiles = null,
   onApplyAgentProfile,
   onEditAgentProfiles,
@@ -748,12 +788,13 @@ function ControlledAgentControls({
 
   useModelCycleShortcut({
     disabled,
-    favoriteKeys,
     isActiveComposer,
-    modelOptions,
+    onApplyAgentProfile,
     onSelectModel,
+    onSelectProviderAndModel,
     provider,
     selectedModelId,
+    serverId: modelSelectorServerId,
   });
   useThinkingStrengthShortcut({
     disabled,
@@ -1645,15 +1686,6 @@ export const AgentControls = memo(function AgentControls({
   const modelOptions = useMemo<AgentControlOption[]>(() => {
     return (models ?? []).map((model) => ({ id: model.id, label: model.label }));
   }, [models]);
-  const favoriteKeys = useMemo(
-    () =>
-      new Set(
-        (preferences.favoriteModels ?? []).map(
-          (favorite) => `${favorite.provider}:${favorite.modelId}`,
-        ),
-      ),
-    [preferences.favoriteModels],
-  );
 
   const thinkingOptions = useMemo<AgentControlOption[]>(() => {
     return (modelSelection.thinkingOptions ?? []).map((option) => ({
@@ -1722,6 +1754,7 @@ export const AgentControls = memo(function AgentControls({
   const agentProfiles = useAgentProfilePicker({
     serverId,
     availableProviders: profileProviders,
+    availableFeatures: getAgentFeatures(agent),
     target: profileTarget,
   });
   const handleEditAgentProfiles = useEditAgentProfilesNavigation(serverId, agentProfiles !== null);
@@ -1833,7 +1866,6 @@ export const AgentControls = memo(function AgentControls({
       modelOptions={modelOptions}
       selectedModelId={modelSelection.activeModelId ?? undefined}
       onSelectModel={handleSelectModel}
-      favoriteKeys={favoriteKeys}
       agentProfiles={agentProfiles}
       onApplyAgentProfile={agentProfiles?.applyProfile}
       onEditAgentProfiles={handleEditAgentProfiles}
@@ -1916,6 +1948,7 @@ export function DraftAgentControls({
   const agentProfiles = useAgentProfilePicker({
     serverId: modelSelectorServerId,
     availableProviders: profileProviders,
+    availableFeatures: features,
     target: profileTarget,
   });
   const handleEditAgentProfiles = useEditAgentProfilesNavigation(

@@ -501,6 +501,8 @@ Tests use `isProviderAvailable(provider)` to skip when the binary or credentials
 
 **Models and modes are discovered dynamically.** ACP providers report available models and modes at runtime via the protocol. The static definitions in `provider-manifest.ts` are used for UI scaffolding (icons, color tiers) but the runtime values from the agent process are the source of truth.
 
+**Cursor thinking is per-model `effort`, not ACP `thought_level`.** Cursor advertises reasoning as a select named `effort` on the current model only. Composer 2.5 has Fast and no effort. Catalog probe remaps `effort` → `thought_level` and switches models before reading thinking options; stamping the probe session's options onto every model hides the chip or shows the wrong default. `setSessionModel` does not return `configOptions` — refresh by no-op `fast` after a switch.
+
 **`AgentProvider` is always `string`.** The type alias is `type AgentProvider = string`. Provider IDs are validated against the manifest at runtime, not at the type level.
 
 **Auth patterns vary.** Some providers need API keys in env vars (`ANTHROPIC_API_KEY`, `OPENAI_API_KEY`), some use OAuth tokens (`CLAUDE_CODE_OAUTH_TOKEN`), some use auth files (`~/.codex/auth.json`), and some handle auth entirely in their CLI binary (Copilot). Your `isAvailable()` method should check whatever is needed.

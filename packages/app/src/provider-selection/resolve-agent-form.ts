@@ -168,9 +168,11 @@ export function resolveThinkingOptionId(args: {
 }): string {
   const effectiveModel = resolveEffectiveModel(args.availableModels, args.modelId);
   const thinkingOptions = effectiveModel?.thinkingOptions ?? [];
-  if (thinkingOptions.length === 0) return "";
-
   const normalizedThinkingOptionId = args.requestedThinkingOptionId.trim();
+  // Catalog probes can land on a model that has no thinking picker yet. Keep
+  // the requested id so a later catalog that includes it does not fall back
+  // to that model's default (often `low`).
+  if (thinkingOptions.length === 0) return normalizedThinkingOptionId;
   if (
     normalizedThinkingOptionId &&
     thinkingOptions.some((option) => option.id === normalizedThinkingOptionId)

@@ -18,6 +18,7 @@ import {
 import {
   ACPAgentClient,
   ACPAgentSession,
+  type ACPConfigFeatureOption,
   type SpawnedACPProcess,
   type SessionStateResponse,
   buildACPClientCapabilities,
@@ -29,6 +30,7 @@ import {
   resolveACPModelSelection,
   summarizeACPRequestError,
 } from "./acp-agent.js";
+import { CURSOR_FAST_FEATURE_OPTION } from "./cursor-acp-agent.js";
 import type { ProcessTerminator, TreeKillTarget } from "../../../utils/tree-kill.js";
 import {
   COPILOT_AGENT_FEATURE_OPTION,
@@ -121,6 +123,7 @@ interface ACPConfiguredOverrideInternals {
   availableModels: Array<{ modelId: string; name: string; description?: string | null }> | null;
   currentMode: string | null;
   currentModel: string | null;
+  thinkingOptionId: string | null;
   applyConfiguredOverrides(): Promise<void>;
 }
 
@@ -178,7 +181,9 @@ function createSessionWithConfig(
     provider?: string;
     modeId?: string | null;
     model?: string | null;
+    thinkingOptionId?: string | null;
     featureValues?: Record<string, unknown>;
+    configFeatureOptions?: ACPConfigFeatureOption[];
   } = {},
   logger: ReturnType<typeof createTestLogger> = createTestLogger(),
 ): ACPAgentSession {
@@ -188,6 +193,7 @@ function createSessionWithConfig(
       cwd: "/tmp/paseo-acp-test",
       modeId: config.modeId ?? undefined,
       model: config.model ?? undefined,
+      thinkingOptionId: config.thinkingOptionId ?? undefined,
       featureValues: config.featureValues,
     },
     {
@@ -195,6 +201,7 @@ function createSessionWithConfig(
       logger,
       defaultCommand: ["claude", "--acp"],
       defaultModes: [],
+      configFeatureOptions: config.configFeatureOptions,
       capabilities: {
         supportsStreaming: true,
         supportsSessionPersistence: true,
@@ -205,6 +212,19 @@ function createSessionWithConfig(
       },
     },
   );
+}
+
+function cursorFastConfigOption(currentValue: "false" | "true"): SessionConfigOption {
+  return {
+    id: "fast",
+    name: "Fast",
+    type: "select",
+    currentValue,
+    options: [
+      { value: "false", name: "Off" },
+      { value: "true", name: "Fast" },
+    ],
+  };
 }
 
 function createKiroSession(
@@ -1579,6 +1599,114 @@ describe("ACPAgentSession Zed parity", () => {
         ],
       },
     ]);
+  });
+
+  test("coerces a boolean Cursor fast profile value to the ACP string option", async () => {
+    const setSessionConfigOption = vi.fn(async () => ({
+      configOptions: [cursorFastConfigOption("true")],
+    }));
+    const session = createSessionWithConfig({
+      provider: "cursor",
+      featureValues: { fast: true },
+      configFeatureOptions: [CURSOR_FAST_FEATURE_OPTION],
+    });
+    const { internals } = prepareConfiguredOverrideSession(session, {
+      configOptions: [cursorFastConfigOption("false")],
+      connection: { setSessionConfigOption },
+    });
+
+    await internals.applyConfiguredOverrides();
+
+    expect(setSessionConfigOption).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      configId: "fast",
+      value: "true",
+    });
+  });
+
+  test("refreshes config options after a Cursor model switch so thinking uses the new model", async () => {
+    const logger = createTestLogger();
+    const childLogger = { trace: vi.fn(), warn: vi.fn() };
+    vi.spyOn(logger, "child").mockReturnValue(asInternals<typeof logger>(childLogger));
+    const setSessionConfigOption = vi.fn(async ({ configId }: { configId: string }) => ({
+      configOptions: configId === "fast" ? [cursorFastConfigOption("true")] : [],
+    }));
+    const session = createSessionWithConfig(
+      {
+        provider: "cursor",
+        model: "composer-2.5",
+        thinkingOptionId: "high",
+        configFeatureOptions: [CURSOR_FAST_FEATURE_OPTION],
+      },
+      logger,
+    );
+    const { internals, unstableSetSessionModel } = prepareConfiguredOverrideSession(session, {
+      currentModel: "grok-4.6",
+      availableModels: [
+        { modelId: "grok-4.6", name: "Grok 4.6", description: null },
+        { modelId: "composer-2.5", name: "Composer 2.5", description: null },
+      ],
+      configOptions: [
+        selectConfigOption("thought_level", ["low", "high"], "low"),
+        cursorFastConfigOption("true"),
+      ],
+      connection: { setSessionConfigOption },
+    });
+    internals.thinkingOptionId = null;
+
+    await expect(internals.applyConfiguredOverrides()).resolves.toBeUndefined();
+    expect(unstableSetSessionModel).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      modelId: "composer-2.5",
+    });
+    expect(setSessionConfigOption).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      configId: "fast",
+      value: "true",
+    });
+    expect(setSessionConfigOption).not.toHaveBeenCalledWith({
+      sessionId: "session-1",
+      configId: "thought_level-option",
+      value: "high",
+    });
+    expect(childLogger.warn).toHaveBeenCalledWith(
+      { value: "high" },
+      "cursor does not expose ACP thought-level selection; using provider default thinking",
+    );
+  });
+
+  test("does not fail session start when the current model rejects a stale effort option", async () => {
+    const logger = createTestLogger();
+    const childLogger = { trace: vi.fn(), warn: vi.fn() };
+    vi.spyOn(logger, "child").mockReturnValue(asInternals<typeof logger>(childLogger));
+    const setSessionConfigOption = vi.fn(async () => {
+      throw new Error("Unknown model config option: effort");
+    });
+    const session = createSessionWithConfig(
+      {
+        provider: "cursor",
+        thinkingOptionId: "high",
+      },
+      logger,
+    );
+    const { internals } = prepareConfiguredOverrideSession(session, {
+      currentModel: "grok-4.6",
+      availableModels: [{ modelId: "grok-4.6", name: "Grok 4.6", description: null }],
+      configOptions: [selectConfigOption("thought_level", ["low", "high"], "low")],
+      connection: { setSessionConfigOption },
+    });
+    internals.thinkingOptionId = null;
+
+    await expect(internals.applyConfiguredOverrides()).resolves.toBeUndefined();
+    expect(setSessionConfigOption).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      configId: "thought_level-option",
+      value: "high",
+    });
+    expect(childLogger.warn).toHaveBeenCalledWith(
+      { value: "high" },
+      "cursor does not expose ACP thought-level selection; using provider default thinking",
+    );
   });
 
   test("applies configured Copilot custom agent before the first turn", async () => {

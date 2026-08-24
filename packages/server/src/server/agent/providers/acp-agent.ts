@@ -399,8 +399,8 @@ export interface ACPCatalogModelResolverContext {
 /**
  * Optional hook that refines the catalog's model list using the live probe session.
  * The base client ships no resolver — catalog discovery derives models from the initial
- * session response and never mutates the probe. Providers that need per-model data (Kimi)
- * inject a resolver so the extra round trips stay off every other ACP.
+ * session response and never mutates the probe. Providers that need per-model data
+ * (Kimi, Cursor) inject a resolver so the extra round trips stay off every other ACP.
  */
 export type ACPCatalogModelResolver = (
   context: ACPCatalogModelResolverContext,
@@ -2599,6 +2599,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       });
       try {
         await this.setModelWithSelection({ modelId: configuredModelId, selection });
+        await this.refreshConfigOptionsAfterModelChange();
       } catch (error) {
         if (!this.isModelSelectionUnavailableError(error)) {
           throw error;
@@ -2610,7 +2611,17 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       }
     }
     if (this.config.thinkingOptionId && this.config.thinkingOptionId !== this.thinkingOptionId) {
-      await this.setThinkingOption(this.config.thinkingOptionId);
+      try {
+        await this.setThinkingOption(this.config.thinkingOptionId);
+      } catch (error) {
+        if (!this.isThoughtLevelUnavailableError(error)) {
+          throw error;
+        }
+        this.logger.warn(
+          { value: this.config.thinkingOptionId },
+          `${this.provider} does not expose ACP thought-level selection; using provider default thinking`,
+        );
+      }
     }
     const configuredFeatureValues = this.config.featureValues ?? {};
     for (const featureOption of this.configFeatureOptions) {
@@ -2631,6 +2642,61 @@ export class ACPAgentSession implements AgentSession, ACPClient {
 
   private isModelSelectionUnavailableError(error: unknown): boolean {
     return error instanceof Error && error.message === this.modelSelectionUnavailableMessage();
+  }
+
+  private isThoughtLevelUnavailableError(error: unknown): boolean {
+    if (!(error instanceof Error)) {
+      return false;
+    }
+    return (
+      error.message === `${this.provider} does not expose ACP thought-level selection` ||
+      error.message.includes("Unknown model config option:")
+    );
+  }
+
+  private findConfigRefreshSelectOption(): SelectConfigOption | null {
+    const options = this.configOptions ?? [];
+    const preferred = options.find(
+      (entry): entry is SelectConfigOption => entry.type === "select" && entry.id === "fast",
+    );
+    if (preferred) {
+      return preferred;
+    }
+    return (
+      options.find(
+        (entry): entry is SelectConfigOption =>
+          entry.type === "select" &&
+          entry.category !== "thought_level" &&
+          entry.category !== "model",
+      ) ?? null
+    );
+  }
+
+  private async refreshConfigOptionsAfterModelChange(): Promise<void> {
+    if (!this.connection || !this.sessionId) {
+      return;
+    }
+    const option = this.findConfigRefreshSelectOption();
+    if (!option) {
+      return;
+    }
+    try {
+      const response = await this.runACPRequest(() =>
+        this.connection!.setSessionConfigOption({
+          sessionId: this.sessionId!,
+          configId: option.id,
+          value: option.currentValue,
+        }),
+      );
+      this.configOptions = this.transformConfigOptions(response.configOptions ?? []);
+      this.thinkingOptionId =
+        deriveCurrentConfigValue(this.configOptions, "thought_level") ?? this.thinkingOptionId;
+    } catch (error) {
+      this.logger.warn(
+        { error: toDiagnosticErrorMessage(error) },
+        `${this.provider} could not refresh ACP config options after a model change`,
+      );
+    }
   }
 
   private translateSessionUpdate(update: SessionUpdate): AgentStreamEvent[] {
@@ -3093,6 +3159,9 @@ function normalizeConfigFeatureOptionLabel(
 function normalizeConfigFeatureValue(value: unknown): string {
   if (typeof value === "string") {
     return value;
+  }
+  if (typeof value === "boolean") {
+    return value ? "true" : "false";
   }
   if (value === null) {
     return "";

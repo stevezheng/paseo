@@ -42,7 +42,11 @@ const PASSTHROUGH_DISPATCH: Record<string, KeyboardActionDefinition> = {
   "agent.interrupt": { id: "agent.interrupt", scope: "global" },
   "agent.prompt.next": { id: "agent.prompt.next", scope: "workspace" },
   "agent.prompt.previous": { id: "agent.prompt.previous", scope: "workspace" },
-  "workspace.tab.new": { id: "workspace.tab.new", scope: "workspace" },
+  "workspace.tab.menu.open": { id: "workspace.tab.menu.open", scope: "workspace" },
+  "workspace.tab.target.agent": { id: "workspace.tab.target.agent", scope: "workspace" },
+  "workspace.tab.target.browser": { id: "workspace.tab.target.browser", scope: "workspace" },
+  "workspace.tab.target.changes": { id: "workspace.tab.target.changes", scope: "workspace" },
+  "workspace.tab.target.files": { id: "workspace.tab.target.files", scope: "workspace" },
   "workspace.new": { id: "workspace.new", scope: "sidebar" },
   "workspace.project.pick": { id: "workspace.project.pick", scope: "workspace" },
   "workspace.archive": { id: "workspace.archive", scope: "sidebar" },
@@ -62,6 +66,10 @@ const PASSTHROUGH_DISPATCH: Record<string, KeyboardActionDefinition> = {
   "workspace.pane.move-tab.up": { id: "workspace.pane.move-tab.up", scope: "workspace" },
   "workspace.pane.move-tab.down": { id: "workspace.pane.move-tab.down", scope: "workspace" },
   "workspace.pane.close": { id: "workspace.pane.close", scope: "workspace" },
+  "workspace.explorer.maximize.toggle": {
+    id: "workspace.explorer.maximize.toggle",
+    scope: "workspace",
+  },
   "view.toggle.focus": { id: "workspace.focus.toggle", scope: "workspace" },
 };
 

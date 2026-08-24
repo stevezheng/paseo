@@ -35,6 +35,8 @@ export interface UseChatOutlineInput {
   enabled: boolean;
   viewportRef: RefObject<StreamViewportHandle | null>;
   onJumpError: () => void;
+  visibleItemIds?: ReadonlySet<string>;
+  revealLoadedItem?: (itemId: string) => boolean;
 }
 
 export interface ChatOutline {
@@ -55,6 +57,8 @@ export function useChatOutline({
   enabled,
   viewportRef,
   onJumpError,
+  visibleItemIds,
+  revealLoadedItem,
 }: UseChatOutlineInput): ChatOutline {
   const [index, setIndex] = useState<AgentTimelinePromptIndexPayload | null>(null);
   const [pendingJump, setPendingJump] = useState<PendingPromptJump | null>(null);
@@ -142,7 +146,12 @@ export function useChatOutline({
   useEffect(() => {
     if (pendingJump === null) return;
     const target = loadedItems.find((item) => item.timelineCursor?.seq === pendingJump.seq);
-    if (target && !pendingJump.hasScrolled) {
+    if (target) {
+      if (pendingJump.hasScrolled) return;
+      if (visibleItemIds?.has(target.id) === false) {
+        revealLoadedItem?.(target.id);
+        return;
+      }
       viewportRef.current?.scrollToMessage?.(target.id);
       setPendingJump((current) => {
         if (current?.requestId !== pendingJump.requestId) return current;
@@ -151,7 +160,7 @@ export function useChatOutline({
       return;
     }
     if (pendingJump.fetchSettled) setPendingJump(null);
-  }, [loadedItems, pendingJump, viewportRef]);
+  }, [loadedItems, pendingJump, revealLoadedItem, viewportRef, visibleItemIds]);
 
   const jumpToPrompt = useCallback(
     (seq: number) => {
@@ -159,6 +168,11 @@ export function useChatOutline({
       setPendingJump(null);
       const loaded = loadedItems.find((item) => item.timelineCursor?.seq === seq);
       if (loaded) {
+        if (revealLoadedItem?.(loaded.id)) {
+          const requestId = nextJumpRequestIdRef.current;
+          setPendingJump({ requestId, seq, fetchSettled: true, hasScrolled: false });
+          return;
+        }
         viewportRef.current?.scrollToMessage?.(loaded.id);
         return;
       }
@@ -178,7 +192,7 @@ export function useChatOutline({
           });
         });
     },
-    [agentId, index, loadedItems, onJumpError, serverId, viewportRef],
+    [agentId, index, loadedItems, onJumpError, revealLoadedItem, serverId, viewportRef],
   );
 
   const jumpToPreviousPrompt = useCallback(() => {

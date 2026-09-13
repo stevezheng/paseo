@@ -1,3 +1,4 @@
+import { getHostRuntimeStore } from "@/runtime/host-runtime";
 import { Button } from "@/components/ui/button";
 import { LoadingSpinner } from "@/components/ui/loading-spinner";
 import type { DaemonClient } from "@getpaseo/client/internal/daemon-client";
@@ -310,11 +311,7 @@ function storeFetchedAgentDetail(input: {
   const store = useSessionStore.getState();
 
   if (shouldStoreFetchedAgentInActiveDirectory(hydrated)) {
-    store.setAgents(input.serverId, (previous) => {
-      const next = new Map(previous);
-      next.set(hydrated.id, hydrated);
-      return next;
-    });
+    getHostRuntimeStore().acceptAgentSnapshot(input.serverId, hydrated);
   } else {
     store.setAgentDetails(input.serverId, (previous) => {
       const next = new Map(previous);
@@ -362,7 +359,7 @@ function useAgentPanelDescriptor(
   );
   const provider = descriptorState.provider;
   const label = resolveWorkspaceAgentTabLabel(descriptorState.title);
-  const icon = getProviderIcon(provider);
+  const icon = getProviderIcon(provider, context.serverId);
 
   return {
     label: label ?? "",
@@ -414,11 +411,7 @@ function DraftPanel() {
     (agentSnapshot: Parameters<typeof normalizeAgentSnapshot>[0]) => {
       const normalized = normalizeAgentSnapshot(agentSnapshot, serverId);
       const agent = applyLegacyDaemonWorkspaceOwnership({ serverId, agent: normalized });
-      useSessionStore.getState().setAgents(serverId, (prev) => {
-        const next = new Map(prev);
-        next.set(agentSnapshot.id, agent);
-        return next;
-      });
+      getHostRuntimeStore().acceptAgentSnapshot(serverId, agent);
       retargetCurrentTab({ kind: "agent", agentId: agentSnapshot.id });
     },
     [retargetCurrentTab, serverId],
@@ -633,8 +626,6 @@ function AgentPanelBody({
   const [lookupState, setLookupState] = useState<AgentLookupState>({ tag: "idle" });
   const lookupAttemptTokenRef = useRef(0);
   const retryAgentLookup = useCallback(() => setLookupState({ tag: "idle" }), []);
-  const workspaceKey = buildWorkspaceTabPersistenceKey({ serverId, workspaceId });
-  const resolvePendingAgent = useWorkspaceLayoutStore((state) => state.resolvePendingAgent);
 
   useEffect(() => {
     lookupAttemptTokenRef.current += 1;
@@ -646,9 +637,6 @@ function AgentPanelBody({
       return;
     }
     if (agentState.id) {
-      if (workspaceKey) {
-        resolvePendingAgent(workspaceKey, agentId);
-      }
       if (lookupState.tag !== "idle") {
         setLookupState({ tag: "idle" });
       }
@@ -671,9 +659,6 @@ function AgentPanelBody({
           return;
         }
         if (!result) {
-          if (workspaceKey) {
-            resolvePendingAgent(workspaceKey, agentId);
-          }
           setLookupState({
             tag: "not_found",
             message: `Agent not found: ${agentId}`,
@@ -682,9 +667,6 @@ function AgentPanelBody({
         }
 
         storeFetchedAgentDetail({ serverId, result });
-        if (workspaceKey) {
-          resolvePendingAgent(workspaceKey, agentId);
-        }
         setLookupState({ tag: "idle" });
         return;
       })
@@ -694,25 +676,12 @@ function AgentPanelBody({
         }
         const message = toErrorMessage(error);
         if (isNotFoundErrorMessage(message)) {
-          if (workspaceKey) {
-            resolvePendingAgent(workspaceKey, agentId);
-          }
           setLookupState({ tag: "not_found", message });
           return;
         }
         setLookupState({ tag: "error", message });
       });
-  }, [
-    agentId,
-    agentState.id,
-    client,
-    hasSession,
-    isConnected,
-    lookupState.tag,
-    resolvePendingAgent,
-    serverId,
-    workspaceKey,
-  ]);
+  }, [agentId, agentState.id, client, hasSession, isConnected, lookupState.tag, serverId]);
 
   if (lookupState.tag === "not_found") {
     return (
@@ -1390,7 +1359,7 @@ const ChatAgentReadyContent = memo(function ChatAgentReadyContent({
       setText={agentInputDraft.replaceText}
       onRewindComplete={handleRewindComplete}
     >
-      <View style={styles.root}>
+      <View style={styles.root} collapsable={false}>
         <DockedChatSurface disabled={isArchivingCurrentAgent}>
           {contentContainer}
 
@@ -1823,6 +1792,8 @@ const styles = StyleSheet.create((theme) => ({
   root: {
     flex: 1,
     backgroundColor: theme.colors.surface0,
+    // KeyboardDock translates the chat surface while the keyboard moves; clip it at the header edge.
+    overflow: "hidden",
   },
   container: {
     flex: 1,

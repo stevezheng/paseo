@@ -184,6 +184,31 @@ describe("submitAgentInput", () => {
     expect(clearDraft).not.toHaveBeenCalled();
   });
 
+  it("surfaces object send failures as readable text instead of [object Object]", async () => {
+    const setSendError = vi.fn();
+
+    await expect(
+      submitAgentInput({
+        message: "hello",
+        attachments: [],
+        isAgentRunning: false,
+        canSubmit: true,
+        queueMessage: vi.fn(),
+        submitMessage: async () => {
+          throw { error: { code: -32603, message: "Authentication failed. Run /login." } };
+        },
+        clearDraft: vi.fn(),
+        setUserInput: vi.fn(),
+        setAttachments: vi.fn(),
+        setSendError,
+        setIsProcessing: vi.fn(),
+      }),
+    ).resolves.toBe("failed");
+
+    expect(setSendError).toHaveBeenNthCalledWith(2, "Authentication failed. Run /login.");
+    expect(setSendError.mock.calls.at(-1)?.[0]).not.toContain("[object Object]");
+  });
+
   it("restores a steered active-turn draft after an ambiguous immediate-send error", async () => {
     const error = new Error("connection lost after delivery");
     const setUserInput = vi.fn();

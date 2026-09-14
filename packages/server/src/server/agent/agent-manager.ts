@@ -8,6 +8,7 @@ import {
   AGENT_LIFECYCLE_STATUSES,
   type AgentLifecycleStatus,
 } from "@getpaseo/protocol/agent-lifecycle";
+import { getErrorMessage } from "@getpaseo/protocol/error-utils";
 import {
   getParentAgentIdFromLabels,
   hasOpenAgentTab,
@@ -2414,7 +2415,9 @@ export class AgentManager {
         throw error;
       }
       agent.pendingReplacement = false;
-      const errorMsg = error instanceof Error ? error.message : "Failed to start turn";
+      const extracted = getErrorMessage(error);
+      const errorMsg =
+        extracted && extracted !== "Unknown error" ? extracted : "Failed to start turn";
       pendingRun.start = { status: "failed", error: errorMsg };
       await this.handleStreamEvent(agent, {
         type: "turn_failed",

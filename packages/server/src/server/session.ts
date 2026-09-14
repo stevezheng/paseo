@@ -287,12 +287,6 @@ type ProviderSubagentManagerEvent = Extract<
 const LEGACY_PROVIDER_IDS = new Set(["claude", "codex", "opencode"]);
 const MIN_VERSION_ALL_PROVIDERS = "0.1.45";
 const MIN_VERSION_EXPLICIT_WORKSPACE_RECOVERY = "0.1.105";
-function errorToFriendlyMessage(error: unknown): string {
-  if (error instanceof Error) return error.message;
-  if (typeof error === "string") return error;
-  return "Unknown error";
-}
-
 function isAppVersionAtLeast(appVersion: string | null, minVersion: string): boolean {
   if (!appVersion) return false;
   // Strip prerelease suffix: "0.1.45-beta.4" -> "0.1.45"
@@ -1584,7 +1578,7 @@ export class Session {
   }
 
   private handleAgentRunError(agentId: string, error: unknown, context: string): void {
-    const message = errorToFriendlyMessage(error);
+    const message = getErrorMessage(error);
     this.sessionLogger.error({ err: error, agentId, context }, `${context} for agent ${agentId}`);
     this.emit({
       type: "activity_log",
@@ -2101,7 +2095,7 @@ export class Session {
       try {
         await this.dispatchInboundMessage(msg, source);
       } catch (error) {
-        const err = error instanceof Error ? error : new Error(String(error));
+        const err = error instanceof Error ? error : new Error(getErrorMessage(error));
         this.sessionLogger.error({ err }, "Error handling message");
 
         const requestId =
@@ -4316,7 +4310,7 @@ export class Session {
             requestId,
             agentId,
             agent: payload,
-            error: errorToFriendlyMessage(error),
+            error: getErrorMessage(error),
           },
         });
       } else {
@@ -7922,7 +7916,7 @@ export class Session {
           requestId: msg.requestId,
           agentId: resolved.agentId,
           accepted: false,
-          error: errorToFriendlyMessage(error),
+          error: getErrorMessage(error),
         },
       });
     }
@@ -8022,7 +8016,7 @@ export class Session {
         error instanceof Error &&
         (error.name === "AbortError" || error.message.toLowerCase().includes("aborted"));
       if (!isAbort) {
-        const message = errorToFriendlyMessage(error);
+        const message = getErrorMessage(error);
         this.sessionLogger.error({ err: error, agentId }, "wait_for_finish_request failed");
         const final = await this.getAgentPayloadById(agentId);
         this.emit({

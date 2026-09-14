@@ -17,6 +17,7 @@ import { createUserMessage, generateMessageId, type UserMessageItem } from "@/ty
 import type { MessageSubmissionRejectionOutcome } from "@/composer/submission/model";
 import type { PickedImageAttachmentInput } from "@/hooks/image-attachment-picker";
 import { i18n } from "@/i18n/i18next";
+import { toErrorMessage } from "@/utils/error-messages";
 
 export interface QueuedComposerMessage {
   id: string;
@@ -309,11 +310,12 @@ export async function sendQueuedComposerMessageNow(
       next.set(input.agentId, [item, ...(prev.get(input.agentId) ?? [])]);
       return next;
     });
+    const message = toErrorMessage(error);
     return {
       status: "failed",
       errorMessage:
-        error instanceof Error
-          ? error.message
+        message && message !== "Unknown error" && message !== "[object Object]"
+          ? message
           : (input.failedToSendMessage ?? i18n.t("composer.errors.failedToSend")),
     };
   }

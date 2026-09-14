@@ -9,6 +9,7 @@ import type { DraftCommandConfig } from "@/hooks/use-agent-commands-query";
 import { i18n } from "@/i18n/i18next";
 import { compareMatchScores, scoreTextFields } from "@getpaseo/protocol/search/text-match";
 import { filterSelectableModels } from "./model-catalog";
+import { resolveThinkingOptionId } from "./resolve-agent-form";
 
 export interface ProviderSelectionModelRow {
   /**
@@ -276,14 +277,11 @@ export function resolveEffectiveComposerThinkingOptionId(
   selection: ProviderSelectionState,
   effectiveModelId: string,
 ): string {
-  const selectedThinkingOptionId = selection.thinkingOptionId.trim();
-  if (selectedThinkingOptionId) {
-    return selectedThinkingOptionId;
-  }
-
-  const selectedModelDefinition =
-    selection.availableModels.find((model) => model.id === effectiveModelId) ?? null;
-  return selectedModelDefinition?.defaultThinkingOptionId ?? "";
+  return resolveThinkingOptionId({
+    availableModels: selection.availableModels,
+    modelId: effectiveModelId,
+    requestedThinkingOptionId: selection.thinkingOptionId,
+  });
 }
 
 export function buildDraftCommandConfig(input: {

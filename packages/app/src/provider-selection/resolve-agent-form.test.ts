@@ -1085,6 +1085,42 @@ describe("resolveAgentForm", () => {
 
       expect(next.form.thinkingOptionId).toBe("low");
     });
+
+    it("does not keep the previous provider thinking id when switching to Cursor", () => {
+      const cursorDefinition: AgentProviderDefinition = {
+        id: "cursor",
+        label: "Cursor",
+        description: "Cursor test provider",
+        defaultModeId: "agent",
+        modes: [{ id: "agent", label: "Agent", icon: "ShieldAlert", colorTier: "moderate" }],
+      };
+      const state = makeState({
+        provider: "claude",
+        model: "claude-sonnet-5",
+        thinkingOptionId: "high",
+      });
+      const next = resolveAgentForm(state, {
+        type: "SET_PROVIDER_AND_MODEL_FROM_USER",
+        provider: "cursor",
+        modelId: "grok-4.6",
+        providerDef: cursorDefinition,
+        providerModels: [
+          {
+            provider: "cursor",
+            id: "grok-4.6",
+            label: "Cursor Grok 4.6",
+            isDefault: true,
+            defaultThinkingOptionId: "true",
+            thinkingOptions: [
+              { id: "false", label: "Off" },
+              { id: "true", label: "On", isDefault: true },
+            ],
+          },
+        ],
+      });
+
+      expect(next.form.thinkingOptionId).toBe("true");
+    });
   });
 
   describe("SET_MODE_FROM_USER", () => {

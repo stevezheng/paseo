@@ -2240,6 +2240,18 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     if (!option) {
       throw new Error(`${this.provider} does not expose ACP thought-level selection`);
     }
+    const choice = findSelectConfigChoice({ option, value: thinkingOptionId });
+    if (!choice) {
+      this.warnInvalidSelection(
+        thinkingOptionId,
+        `is not a valid ${this.provider} thought-level option. Available options: ${flattenSelectOptions(
+          option.options,
+        )
+          .map((entry) => entry.value)
+          .join(", ")}`,
+      );
+      return;
+    }
     const response = await this.connection.setSessionConfigOption({
       sessionId: this.sessionId,
       configId: option.id,
@@ -2854,7 +2866,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       try {
         await this.setThinkingOption(this.config.thinkingOptionId);
       } catch (error) {
-        if (!this.isThoughtLevelUnavailableError(error)) {
+        if (!this.isIgnorableSessionConfigError(error)) {
           throw error;
         }
         this.logger.warn(
@@ -2868,7 +2880,17 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       if (!Object.prototype.hasOwnProperty.call(configuredFeatureValues, featureOption.id)) {
         continue;
       }
-      await this.setFeature(featureOption.id, configuredFeatureValues[featureOption.id]);
+      try {
+        await this.setFeature(featureOption.id, configuredFeatureValues[featureOption.id]);
+      } catch (error) {
+        if (!this.isIgnorableSessionConfigError(error)) {
+          throw error;
+        }
+        this.logger.warn(
+          { featureId: featureOption.id, error: toDiagnosticErrorMessage(error) },
+          `${this.provider} could not apply ACP feature '${featureOption.id}'`,
+        );
+      }
     }
   }
 
@@ -2884,13 +2906,14 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     return error instanceof Error && error.message === this.modelSelectionUnavailableMessage();
   }
 
-  private isThoughtLevelUnavailableError(error: unknown): boolean {
-    if (!(error instanceof Error)) {
-      return false;
-    }
+  private isIgnorableSessionConfigError(error: unknown): boolean {
+    const message = summarizeACPRequestError(error).message;
     return (
-      error.message === `${this.provider} does not expose ACP thought-level selection` ||
-      error.message.includes("Unknown model config option:")
+      message === `${this.provider} does not expose ACP thought-level selection` ||
+      message.includes("Unknown model config option:") ||
+      /Invalid value for thinking\b/i.test(message) ||
+      message.includes(`does not expose ACP feature '`) ||
+      /does not include option '/.test(message)
     );
   }
 

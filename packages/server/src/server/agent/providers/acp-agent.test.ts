@@ -1713,6 +1713,86 @@ describe("ACPAgentSession Zed parity", () => {
     );
   });
 
+  test("does not send a stale Claude thinking id to a Cursor model that only has on/off", async () => {
+    const logger = createTestLogger();
+    const childLogger = { trace: vi.fn(), warn: vi.fn() };
+    vi.spyOn(logger, "child").mockReturnValue(asInternals<typeof logger>(childLogger));
+    const setSessionConfigOption = vi.fn(async () => ({
+      configOptions: [selectConfigOption("thought_level", ["false", "true"], "true")],
+    }));
+    const session = createSessionWithConfig(
+      {
+        provider: "cursor",
+        thinkingOptionId: "high",
+      },
+      logger,
+    );
+    const { internals } = prepareConfiguredOverrideSession(session, {
+      configOptions: [selectConfigOption("thought_level", ["false", "true"], "true")],
+      connection: { setSessionConfigOption },
+    });
+    internals.thinkingOptionId = null;
+
+    await expect(internals.applyConfiguredOverrides()).resolves.toBeUndefined();
+    expect(setSessionConfigOption).not.toHaveBeenCalled();
+    expect(childLogger.warn).toHaveBeenCalledWith(
+      { value: "high" },
+      "is not a valid cursor thought-level option. Available options: false, true",
+    );
+  });
+
+  test("does not fail session start when Cursor rejects a stale thinking value as Invalid params", async () => {
+    const setSessionConfigOption = vi.fn(async () => {
+      throw {
+        code: -32602,
+        message: "Invalid params",
+        data: { message: "Invalid value for thinking: high" },
+      };
+    });
+    const session = createSessionWithConfig({
+      provider: "cursor",
+      thinkingOptionId: "high",
+    });
+    const { internals } = prepareConfiguredOverrideSession(session, {
+      configOptions: [selectConfigOption("thought_level", ["low", "high"], "low")],
+      connection: { setSessionConfigOption },
+    });
+    internals.thinkingOptionId = null;
+
+    await expect(internals.applyConfiguredOverrides()).resolves.toBeUndefined();
+    expect(setSessionConfigOption).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      configId: "thought_level-option",
+      value: "high",
+    });
+  });
+
+  test("does not fail session start when Cursor rejects the fast config option", async () => {
+    const setSessionConfigOption = vi.fn(async () => {
+      throw {
+        code: -32602,
+        message: "Invalid params",
+        data: { message: "Unknown model config option: fast" },
+      };
+    });
+    const session = createSessionWithConfig({
+      provider: "cursor",
+      featureValues: { fast: true },
+      configFeatureOptions: [CURSOR_FAST_FEATURE_OPTION],
+    });
+    const { internals } = prepareConfiguredOverrideSession(session, {
+      configOptions: [cursorFastConfigOption("false")],
+      connection: { setSessionConfigOption },
+    });
+
+    await expect(internals.applyConfiguredOverrides()).resolves.toBeUndefined();
+    expect(setSessionConfigOption).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      configId: "fast",
+      value: "true",
+    });
+  });
+
   test("applies configured Copilot custom agent before the first turn", async () => {
     const setSessionConfigOption = vi.fn(async () => ({
       configOptions: [copilotAgentConfigOption("Probe Agent")],

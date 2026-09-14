@@ -1,4 +1,11 @@
 const USELESS_MESSAGES = new Set(["", "[object Object]"]);
+const GENERIC_JSONRPC_MESSAGES = new Set([
+  "Invalid params",
+  "Internal error",
+  "Method not found",
+  "Invalid Request",
+  "Parse error",
+]);
 const MESSAGE_KEYS = [
   "message",
   "errorMessage",
@@ -36,11 +43,23 @@ function extractFromRecord(record: Record<string, unknown>, seen: WeakSet<object
   }
   seen.add(record);
 
+  let fromKeys: string | null = null;
   for (const key of MESSAGE_KEYS) {
     const nested = extractErrorMessage(record[key], seen);
     if (nested) {
-      return nested;
+      fromKeys = nested;
+      break;
     }
+  }
+  const fromData = extractErrorMessage(record.data, seen);
+  if (fromKeys && fromData && fromKeys !== fromData && GENERIC_JSONRPC_MESSAGES.has(fromKeys)) {
+    return `${fromKeys}: ${fromData}`;
+  }
+  if (fromKeys) {
+    return fromKeys;
+  }
+  if (fromData) {
+    return fromData;
   }
 
   return serializeUnknown(record);

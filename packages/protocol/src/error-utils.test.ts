@@ -26,6 +26,23 @@ describe("getErrorMessage", () => {
     ).toBe("Authentication failed. Run /login to continue.");
   });
 
+  it("prefers JSON-RPC data.message over a generic Invalid params envelope", () => {
+    expect(
+      getErrorMessage({
+        code: -32602,
+        message: "Invalid params",
+        data: { message: "Invalid value for thinking: high" },
+      }),
+    ).toBe("Invalid params: Invalid value for thinking: high");
+    expect(
+      getErrorMessage({
+        code: -32602,
+        message: "Invalid params",
+        data: { message: "Invalid value for thinking: high" },
+      }),
+    ).not.toContain("[object Object]");
+  });
+
   it("serializes unstructured objects instead of [object Object]", () => {
     expect(getErrorMessage({ foo: "bar", code: 429 })).toBe('{"foo":"bar","code":429}');
   });

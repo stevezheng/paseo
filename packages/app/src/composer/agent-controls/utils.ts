@@ -55,16 +55,25 @@ export interface FavoriteModelRef {
   provider: string;
   modelId: string;
   profileId?: string;
+  name?: string;
 }
 
 function favoriteModelKey(entry: FavoriteModelRef): string {
-  return `${entry.provider}:${entry.modelId}`;
+  return entry.profileId ?? `${entry.provider}:${entry.modelId}`;
 }
 
 /** Profiles with `cycle: true` win. Then client leftovers. */
 export function favoriteModelsForCycle(input: {
   stored: readonly FavoriteModelRef[] | undefined;
-  profiles: readonly { id: string; provider: string; model?: string; cycle?: boolean }[] | null;
+  profiles:
+    | readonly {
+        id: string;
+        name?: string;
+        provider: string;
+        model?: string;
+        cycle?: boolean;
+      }[]
+    | null;
 }): FavoriteModelRef[] {
   const cycled: FavoriteModelRef[] = [];
   const seen = new Set<string>();
@@ -76,7 +85,12 @@ export function favoriteModelsForCycle(input: {
     if (!modelId) {
       continue;
     }
-    const entry = { provider: profile.provider, modelId, profileId: profile.id };
+    const entry: FavoriteModelRef = {
+      provider: profile.provider,
+      modelId,
+      profileId: profile.id,
+      ...(profile.name ? { name: profile.name } : {}),
+    };
     const key = favoriteModelKey(entry);
     if (seen.has(key)) {
       continue;
@@ -106,32 +120,115 @@ function favoriteModelCycleDelta(actionId: string): 1 | -1 | null {
   return null;
 }
 
-/** Ctrl+Shift+M cycles marked profiles, falling back to legacy favorite models. */
+function scopedFavoriteModels(input: {
+  favoriteModels: readonly FavoriteModelRef[];
+  selectedProvider: string;
+  canSwitchProvider: boolean;
+}): FavoriteModelRef[] {
+  return input.canSwitchProvider
+    ? [...input.favoriteModels]
+    : input.favoriteModels.filter((entry) => entry.provider === input.selectedProvider);
+}
+
+/**
+ * Cycle/favorite sets win. The provider catalog is only a last resort when
+ * nothing is marked — substituting it for a provider-locked cycle set would
+ * change a different model and look like the shortcut did the wrong thing.
+ */
+export function resolveModelCycleOptions(input: {
+  favoriteModels: readonly FavoriteModelRef[];
+  selectedProvider: string;
+  canSwitchProvider: boolean;
+  providerModels: readonly { id: string }[];
+}): readonly FavoriteModelRef[] {
+  const scoped = scopedFavoriteModels(input);
+  if (scoped.length > 1) {
+    return scoped;
+  }
+  if (input.favoriteModels.length === 0 && input.providerModels.length > 1) {
+    return input.providerModels.map((model) => ({
+      provider: input.selectedProvider,
+      modelId: model.id,
+    }));
+  }
+  return scoped;
+}
+
+/** Live sessions cannot apply a cycle set that spans other providers. */
+export function resolveModelCycleBlock(input: {
+  favoriteModels: readonly FavoriteModelRef[];
+  selectedProvider: string;
+  canSwitchProvider: boolean;
+}): "provider-locked" | null {
+  if (input.canSwitchProvider || input.favoriteModels.length < 2) {
+    return null;
+  }
+  if (scopedFavoriteModels(input).length < 2) {
+    return "provider-locked";
+  }
+  return null;
+}
+
+function resolveCycleSelectionId(input: {
+  options: readonly FavoriteModelRef[];
+  selectedProvider: string;
+  selectedModelId: string | null | undefined;
+  selectedProfileId?: string | null;
+}): string {
+  if (input.selectedProfileId) {
+    const byProfile = input.options.find((entry) => entry.profileId === input.selectedProfileId);
+    if (byProfile) {
+      return favoriteModelKey(byProfile);
+    }
+  }
+  const modelId = input.selectedModelId ?? "";
+  const match = input.options.find(
+    (entry) => entry.provider === input.selectedProvider && entry.modelId === modelId,
+  );
+  if (match) {
+    return favoriteModelKey(match);
+  }
+  return favoriteModelKey({
+    provider: input.selectedProvider,
+    modelId,
+  });
+}
+
+/** Ctrl+Shift+M cycles marked profiles, then favorites, then the provider catalog. */
 export function resolveFavoriteModelCycle({
   actionId,
   favoriteModels,
   selectedProvider,
   selectedModelId,
   canSwitchProvider,
+  providerModels = [],
+  selectedProfileId,
 }: {
   actionId: string;
   favoriteModels: readonly FavoriteModelRef[];
   selectedProvider: string;
   selectedModelId: string | null | undefined;
   canSwitchProvider: boolean;
+  providerModels?: readonly { id: string }[];
+  selectedProfileId?: string | null;
 }): FavoriteModelRef | null {
   const delta = favoriteModelCycleDelta(actionId);
   if (delta === null) {
     return null;
   }
-  const options = canSwitchProvider
-    ? favoriteModels
-    : favoriteModels.filter((entry) => entry.provider === selectedProvider);
+  const options = resolveModelCycleOptions({
+    favoriteModels,
+    selectedProvider,
+    canSwitchProvider,
+    providerModels,
+  });
   const nextId = resolveRelativeAgentControlId({
     options: options.map((entry) => ({ id: favoriteModelKey(entry) })),
-    selectedId: favoriteModelKey({
-      provider: selectedProvider,
-      modelId: selectedModelId ?? "",
+    selectedId: resolveCycleSelectionId({
+      options,
+      selectedProvider,
+      selectedModelId,
+      selectedProfileId,
     }),
     delta,
   });
@@ -210,10 +307,18 @@ type ThinkingOption = NonNullable<AgentModelDefinition["thinkingOptions"]>[numbe
 function resolveEffectiveThinking(
   thinkingOptions: ThinkingOption[] | null,
   resolvedThinkingId: string | null,
+  defaultThinkingOptionId: string | null | undefined,
 ): ThinkingOption | null {
   const selectedThinking =
     thinkingOptions?.find((option) => option.id === resolvedThinkingId) ?? null;
-  return selectedThinking ?? thinkingOptions?.[0] ?? null;
+  if (selectedThinking) {
+    return selectedThinking;
+  }
+  const defaultThinking =
+    thinkingOptions?.find((option) => option.id === defaultThinkingOptionId) ??
+    thinkingOptions?.find((option) => option.isDefault) ??
+    null;
+  return defaultThinking ?? thinkingOptions?.[0] ?? null;
 }
 
 function resolveModelDisplay(
@@ -273,7 +378,11 @@ export function resolveAgentModelSelection(input: {
 
   const thinkingOptions = selectedModel?.thinkingOptions ?? null;
   const resolvedThinkingId = resolveThinkingId(explicitThinkingOptionId, selectedModel);
-  const effectiveThinking = resolveEffectiveThinking(thinkingOptions, resolvedThinkingId);
+  const effectiveThinking = resolveEffectiveThinking(
+    thinkingOptions,
+    resolvedThinkingId,
+    selectedModel?.defaultThinkingOptionId,
+  );
   const selectedThinkingId = effectiveThinking?.id ?? null;
   const displayThinking = resolveThinkingDisplay(
     effectiveThinking,

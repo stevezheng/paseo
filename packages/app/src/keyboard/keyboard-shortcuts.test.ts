@@ -893,7 +893,7 @@ describe("keyboard-shortcut help sections", () => {
     expect(openProject?.label).toBe("Open project");
     expect(previousPrompt?.labelKey).toBe("settings.shortcuts.help.previousPrompt");
     expect(cycleAgentMode?.labelKey).toBe("settings.shortcuts.help.cycleAgentMode");
-    expect(cycleModel?.labelKey).toBe("agentControls.hints.model");
+    expect(cycleModel?.labelKey).toBe("settings.shortcuts.help.cycleAgentProfile");
     expect(decreaseThinking?.labelKey).toBe("settings.shortcuts.help.decreaseThinking");
     expect(increaseThinking?.labelKey).toBe("settings.shortcuts.help.increaseThinking");
     expect(previousFavoriteModel?.labelKey).toBe("settings.shortcuts.help.previousFavoriteModel");

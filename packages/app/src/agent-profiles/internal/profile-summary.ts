@@ -23,6 +23,7 @@ export function buildAgentProfileTags(input: {
   profile: AgentProfile;
   entries: readonly ProviderSnapshotEntry[] | undefined;
   formatFeatureCount: (count: number) => string;
+  cycleLabel: string;
 }): AgentProfileTag[] {
   const entries = input.entries ?? [];
   const entry = findEntry(entries, input.profile.provider);
@@ -50,6 +51,10 @@ export function buildAgentProfileTags(input: {
   const featureCount = Object.keys(input.profile.featureValues ?? {}).length;
   if (featureCount > 0) {
     tags.push({ id: "features", label: input.formatFeatureCount(featureCount) });
+  }
+
+  if (input.profile.cycle === true) {
+    tags.push({ id: "cycle", label: input.cycleLabel });
   }
 
   return tags;

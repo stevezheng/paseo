@@ -105,11 +105,16 @@ export function useAgentProfilePicker(
         icon: profile.icon ?? "",
         color: profile.color ?? "",
         name: profile.name,
-        summary: buildAgentProfileTags({ profile, entries, formatFeatureCount })
+        summary: buildAgentProfileTags({
+          profile,
+          entries,
+          formatFeatureCount,
+          cycleLabel: t("settings.host.agentProfiles.cycleTag"),
+        })
           .map((tag) => tag.label)
           .join(" · "),
       })),
-    [applicableProfiles, entries, formatFeatureCount],
+    [applicableProfiles, entries, formatFeatureCount, t],
   );
 
   const persistSelection = useCallback(

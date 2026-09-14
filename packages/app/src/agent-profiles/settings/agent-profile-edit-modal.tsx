@@ -185,6 +185,7 @@ function OpenAgentProfileEditModal({
       model.setThinking(value, value ? display : null),
     [model],
   );
+  const handleCycleChange = useCallback((value: boolean) => model.setCycle(value), [model]);
 
   const handleSave = useCallback(async () => {
     const value = model.getState().submitValue;
@@ -347,6 +348,19 @@ function OpenAgentProfileEditModal({
             </View>
           </Field>
         ) : null}
+
+        <Field
+          label={t("settings.host.agentProfiles.cycleLabel")}
+          testID="agent-profile-cycle-field"
+        >
+          <Switch
+            value={state.cycle}
+            onValueChange={handleCycleChange}
+            disabled={state.isSubmitting}
+            accessibilityLabel={t("settings.host.agentProfiles.cycleLabel")}
+            testID="agent-profile-cycle-switch"
+          />
+        </Field>
 
         <Field
           label={t("settings.host.agentProfiles.notesLabel")}

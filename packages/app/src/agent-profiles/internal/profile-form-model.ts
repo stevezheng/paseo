@@ -87,6 +87,7 @@ export interface AgentProfileFormState {
   modeId: string;
   thinkingOptionId: string;
   featureValues: Record<string, unknown>;
+  cycle: boolean;
 
   providerOptions: AgentProfileFormOption[];
   modelOptions: AgentProfileFormOption[];
@@ -129,6 +130,7 @@ export interface AgentProfileFormModel {
   setMode: (modeId: string, display: AgentProfileFormDisplay | null) => void;
   setThinking: (thinkingOptionId: string, display: AgentProfileFormDisplay | null) => void;
   setFeatureValue: (featureId: string, value: unknown) => void;
+  setCycle: (value: boolean) => void;
   setSubmitting: (value: boolean) => void;
   setSubmitError: (value: string | null) => void;
 }
@@ -352,6 +354,7 @@ function buildSubmitValue(state: AgentProfileFormState): AgentProfileValue | nul
     ...(state.thinkingOptionId ? { thinkingOptionId: state.thinkingOptionId } : {}),
     ...(Object.keys(state.featureValues).length > 0 ? { featureValues: state.featureValues } : {}),
     ...(notes ? { notes } : {}),
+    ...(state.cycle ? { cycle: true } : {}),
   };
 }
 
@@ -393,6 +396,7 @@ function buildInitialState(snapshot: AgentProfileFormSnapshot): AgentProfileForm
     modeId: profile.modeId ?? "",
     thinkingOptionId: profile.thinkingOptionId ?? "",
     featureValues: { ...profile.featureValues },
+    cycle: profile.cycle === true,
     providerOptions: [],
     modelOptions: [],
     modeOptions: [],
@@ -603,6 +607,7 @@ export function openAgentProfileForm(snapshot: AgentProfileFormSnapshot): AgentP
         ...current,
         featureValues: { ...current.featureValues, [featureId]: value },
       })),
+    setCycle: (value) => publish((current) => ({ ...current, cycle: value })),
     setSubmitting: (value) => publish((current) => ({ ...current, isSubmitting: value })),
     setSubmitError: (value) => publish((current) => ({ ...current, submitError: value })),
   };

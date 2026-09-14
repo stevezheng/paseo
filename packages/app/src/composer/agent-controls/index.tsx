@@ -61,6 +61,8 @@ import {
   resolveRelativeAgentControlId,
   resolveFavoriteModelCycle,
   favoriteModelsForCycle,
+  resolveModelCycleBlock,
+  resolveModelCycleOptions,
   resolveAgentModelSelection,
 } from "@/composer/agent-controls/utils";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -485,6 +487,7 @@ function buildOpenChangeHandler(
 function useModelCycleShortcut(input: {
   disabled: boolean;
   isActiveComposer: boolean;
+  modelOptions: AgentControlOption[] | undefined;
   onApplyAgentProfile: ((profileId: string) => void) | undefined;
   onSelectModel: ((modelId: string) => void) | undefined;
   onSelectProviderAndModel: ((provider: string, modelId: string) => void) | undefined;
@@ -495,6 +498,7 @@ function useModelCycleShortcut(input: {
   const {
     disabled,
     isActiveComposer,
+    modelOptions,
     onApplyAgentProfile,
     onSelectModel,
     onSelectProviderAndModel,
@@ -502,9 +506,12 @@ function useModelCycleShortcut(input: {
     selectedModelId,
     serverId,
   } = input;
+  const { t } = useTranslation();
+  const toast = useToast();
   const { preferences } = useFormPreferences();
   const { profiles } = useAgentProfiles(serverId);
   const handlerIdRef = useRef(`model-control:${Math.random().toString(36).slice(2)}`);
+  const lastCycledProfileIdRef = useRef<string | null>(null);
   const favoriteModels = useMemo(
     () =>
       favoriteModelsForCycle({
@@ -514,6 +521,21 @@ function useModelCycleShortcut(input: {
     [preferences.favoriteModels, profiles],
   );
   const canSwitchProvider = Boolean(onSelectProviderAndModel);
+  const cycleModels = useMemo(
+    () =>
+      resolveModelCycleOptions({
+        favoriteModels,
+        selectedProvider: provider,
+        canSwitchProvider,
+        providerModels: modelOptions ?? [],
+      }),
+    [canSwitchProvider, favoriteModels, modelOptions, provider],
+  );
+  const cycleBlock = resolveModelCycleBlock({
+    favoriteModels,
+    selectedProvider: provider,
+    canSwitchProvider,
+  });
   const handle = useCallback(
     (action: KeyboardActionDefinition): boolean => {
       if (disabled || !isActiveComposer || (!onSelectModel && !onSelectProviderAndModel)) {
@@ -525,31 +547,50 @@ function useModelCycleShortcut(input: {
         selectedProvider: provider,
         selectedModelId,
         canSwitchProvider,
+        providerModels: modelOptions ?? [],
+        selectedProfileId: lastCycledProfileIdRef.current,
       });
-      if (!next) return false;
-      if (next.profileId && onApplyAgentProfile) {
-        onApplyAgentProfile(next.profileId);
+      if (next) {
+        const canApplyProfile =
+          Boolean(next.profileId && onApplyAgentProfile) &&
+          (canSwitchProvider || next.provider === provider);
+        lastCycledProfileIdRef.current = next.profileId ?? null;
+        if (canApplyProfile && next.profileId) {
+          onApplyAgentProfile?.(next.profileId);
+          if (next.name) {
+            toast.show(t("agentControls.hints.modelCycleApplied", { name: next.name }));
+          }
+          return true;
+        }
+        pickDesktopModel({
+          nextProviderId: next.provider,
+          modelId: next.modelId,
+          currentProvider: provider,
+          onSelectModel,
+          onSelectProviderAndModel,
+        });
         return true;
       }
-      pickDesktopModel({
-        nextProviderId: next.provider,
-        modelId: next.modelId,
-        currentProvider: provider,
-        onSelectModel,
-        onSelectProviderAndModel,
-      });
-      return true;
+      if (cycleBlock === "provider-locked") {
+        toast.show(t("agentControls.hints.modelCycleProviderLocked"));
+        return true;
+      }
+      return false;
     },
     [
       canSwitchProvider,
+      cycleBlock,
       disabled,
       favoriteModels,
       isActiveComposer,
+      modelOptions,
       onApplyAgentProfile,
       onSelectModel,
       onSelectProviderAndModel,
       provider,
       selectedModelId,
+      t,
+      toast,
     ],
   );
 
@@ -564,9 +605,7 @@ function useModelCycleShortcut(input: {
       isActiveComposer &&
       !disabled &&
       Boolean(onSelectModel || onSelectProviderAndModel) &&
-      (canSwitchProvider
-        ? favoriteModels.length > 1
-        : favoriteModels.filter((entry) => entry.provider === provider).length > 1),
+      (cycleModels.length > 1 || cycleBlock === "provider-locked"),
     priority: 200,
     handle,
   });
@@ -684,7 +723,7 @@ function ControlledAgentControls({
   const displayThinking = findOptionLabel(
     formattedThinkingOptions,
     selectedThinkingOptionId,
-    formattedThinkingOptions[0]?.label ?? t("agentControls.thinking.unknown"),
+    t("agentControls.thinking.unknown"),
   );
 
   const hasAnyControl = resolveHasAnyControl({
@@ -832,6 +871,7 @@ function ControlledAgentControls({
   useModelCycleShortcut({
     disabled,
     isActiveComposer,
+    modelOptions,
     onApplyAgentProfile,
     onSelectModel,
     onSelectProviderAndModel,
@@ -2021,8 +2061,7 @@ export function DraftAgentControls({
     return toThinkingControlOptions(thinkingOptions);
   }, [thinkingOptions]);
 
-  const effectiveSelectedThinkingOption =
-    selectedThinkingOptionId || mappedThinkingOptions[0]?.id || undefined;
+  const effectiveSelectedThinkingOption = selectedThinkingOptionId || undefined;
 
   const modelOptions = useMemo<AgentControlOption[]>(
     () =>

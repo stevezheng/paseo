@@ -2649,6 +2649,18 @@ describe("ACPAgentSession", () => {
     expect(summary.diagnostic).toContain("Droid process exited unexpectedly");
   });
 
+  test("summarizes nested JSON-RPC error objects instead of [object Object]", () => {
+    const summary = summarizeACPRequestError({
+      error: {
+        code: -32603,
+        message: "Authentication failed. Run /login to continue.",
+      },
+    });
+
+    expect(summary.message).toBe("Authentication failed. Run /login to continue.");
+    expect(summary.message).not.toContain("[object Object]");
+  });
+
   test("accepts ACP extension notifications without failing the JSON-RPC connection", async () => {
     const logger = createTestLogger();
     const trace = vi.spyOn(logger, "trace");
@@ -3034,6 +3046,67 @@ describe("ACPAgentSession", () => {
     resolvePrompt({ stopReason: "end_turn" });
   });
 
+  test("startTurn retries session/prompt without fields Cursor ACP rejects", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    const prompt = vi.fn(
+      async (params: { sessionId: string; messageId?: string; prompt: unknown }) => {
+        if ("messageId" in params) {
+          throw RequestError.invalidParams({
+            issues: [{ code: "unrecognized_keys", keys: ["messageId"] }],
+          });
+        }
+        return { stopReason: "end_turn" } satisfies PromptResponse;
+      },
+    );
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+
+    const turnCompleted = new Promise<Extract<AgentStreamEvent, { type: "turn_completed" }>>(
+      (resolve) => {
+        session.subscribe((event) => {
+          events.push(event);
+          if (event.type === "turn_completed") {
+            resolve(event);
+          }
+        });
+      },
+    );
+
+    await session.startTurn("hello", { clientMessageId: "msg-client-1" });
+    await turnCompleted;
+
+    expect(prompt).toHaveBeenNthCalledWith(1, {
+      sessionId: "session-1",
+      messageId: "msg-client-1",
+      prompt: [{ type: "text", text: "hello" }],
+    });
+    expect(prompt).toHaveBeenNthCalledWith(2, {
+      sessionId: "session-1",
+      prompt: [{ type: "text", text: "hello" }],
+    });
+    expect(events.some((event) => event.type === "turn_failed")).toBe(false);
+
+    prompt.mockClear();
+    const secondTurn = new Promise<Extract<AgentStreamEvent, { type: "turn_completed" }>>(
+      (resolve) => {
+        session.subscribe((event) => {
+          if (event.type === "turn_completed") {
+            resolve(event);
+          }
+        });
+      },
+    );
+    await session.startTurn("again", { clientMessageId: "msg-client-2" });
+    await secondTurn;
+    expect(prompt).toHaveBeenCalledTimes(1);
+    expect(prompt).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      prompt: [{ type: "text", text: "again" }],
+    });
+  });
+
   test("startTurn dedupes ACP user echo chunks for the submitted message", async () => {
     const session = createSession();
     const events: AgentStreamEvent[] = [];
@@ -3320,13 +3393,18 @@ describe("ACPAgentSession", () => {
     });
 
     const { turnId } = await session.startTurn("hello");
+    const turnFailed = new Promise<Extract<AgentStreamEvent, { type: "turn_failed" }>>(
+      (resolve) => {
+        session.subscribe((event) => {
+          if (event.type === "turn_failed") {
+            resolve(event);
+          }
+        });
+      },
+    );
 
     rejectPrompt(new Error("prompt failed"));
-    await Promise.resolve();
-    await Promise.resolve();
-
-    const turnFailedEvent = events.find((event) => event.type === "turn_failed");
-    expect(turnFailedEvent).toMatchObject({
+    await expect(turnFailed).resolves.toMatchObject({
       type: "turn_failed",
       turnId,
       error: "prompt failed",
@@ -3360,9 +3438,17 @@ describe("ACPAgentSession", () => {
       } as SessionUpdate,
     });
 
+    const turnFailed = new Promise<Extract<AgentStreamEvent, { type: "turn_failed" }>>(
+      (resolve) => {
+        session.subscribe((event) => {
+          if (event.type === "turn_failed") {
+            resolve(event);
+          }
+        });
+      },
+    );
     rejectPrompt(new Error("prompt failed"));
-    await Promise.resolve();
-    await Promise.resolve();
+    await turnFailed;
 
     expect(
       events.filter((event) => event.type === "timeline" || event.type === "turn_failed"),

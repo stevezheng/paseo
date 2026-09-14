@@ -119,11 +119,13 @@ import {
   createStringCommandShellEnvOverlay,
 } from "../../../utils/string-command-shell.js";
 import { spawnProcess } from "../../../utils/spawn.js";
+import { getErrorMessage } from "@getpaseo/protocol/error-utils";
 import {
   type DiagnosticEntry,
   toDiagnosticErrorMessage,
   truncateForDiagnostic,
 } from "./diagnostic-utils.js";
+import { callAcpWithParamCompat } from "./acp-request-compat.js";
 import { withTimeout } from "../../../utils/promise-timeout.js";
 
 const ACP_AUTO_ACCEPT_FEATURE_ID = "auto_accept";
@@ -178,16 +180,16 @@ export function summarizeACPRequestError(error: unknown): {
     };
   }
 
-  if (error instanceof Error) {
-    return { message: error.message };
-  }
-
-  return { message: String(error) };
+  return { message: getErrorMessage(error) };
 }
 
 function toACPRequestError(error: unknown): Error {
   if (!isACPError(error)) {
-    return error instanceof Error ? error : new Error(String(error));
+    if (error instanceof Error) {
+      const message = getErrorMessage(error);
+      return message === error.message ? error : new Error(message, { cause: error });
+    }
+    return new Error(getErrorMessage(error));
   }
 
   const summary = summarizeACPRequestError(error);
@@ -1687,6 +1689,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private historyPending = false;
   private replayingHistory = false;
   private bootstrapThreadEventPending = false;
+  private readonly omittedAcpParamKeys = new Set<string>();
   private readonly terminateProcess: ProcessTerminator;
 
   constructor(config: AgentSessionConfig, options: ACPAgentSessionOptions) {
@@ -1734,7 +1737,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       this.agentCapabilities = spawned.initialize.agentCapabilities ?? null;
 
       const response = await this.runACPRequest(() =>
-        this.connection!.newSession({
+        this.callAcpWithParamCompat((params) => this.connection!.newSession(params), {
           cwd: this.config.cwd,
           mcpServers: this.acpMcpServers(),
         }),
@@ -1773,7 +1776,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       if (this.agentCapabilities?.loadSession) {
         this.replayingHistory = true;
         const response = await this.runACPRequest(() =>
-          this.connection!.loadSession({
+          this.callAcpWithParamCompat((params) => this.connection!.loadSession(params), {
             sessionId: handle.sessionId,
             cwd: this.config.cwd,
             mcpServers: this.acpMcpServers(),
@@ -1855,12 +1858,11 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
     this.emitSubmittedUserMessage(prompt, messageId, turnId, options?.clientMessageId);
 
-    void this.connection
-      .prompt({
-        sessionId: this.sessionId,
-        messageId,
-        prompt: toACPContentBlocks(prompt),
-      })
+    void this.callAcpWithParamCompat((params) => this.connection!.prompt(params), {
+      sessionId: this.sessionId,
+      messageId,
+      prompt: toACPContentBlocks(prompt),
+    })
       .then((response) => {
         this.handlePromptResponse(response, turnId);
         return;
@@ -2753,7 +2755,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.child = child;
     this.connection = connection;
     const initialize = await this.runACPRequest(() =>
-      connection.initialize({
+      this.callAcpWithParamCompat((params) => connection.initialize(params), {
         protocolVersion: PROTOCOL_VERSION,
         clientCapabilities: buildACPClientCapabilities(
           this.clientCapabilityMeta,
@@ -2772,6 +2774,18 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     } catch (error) {
       throw toACPRequestError(error);
     }
+  }
+
+  private callAcpWithParamCompat<TParams extends Record<string, unknown>, TResult>(
+    send: (params: TParams) => Promise<TResult>,
+    params: TParams,
+  ): Promise<TResult> {
+    return callAcpWithParamCompat(send, params, this.omittedAcpParamKeys, (keys) => {
+      this.logger.warn(
+        { provider: this.provider, keys },
+        "ACP agent rejected unsupported request params; retrying without them",
+      );
+    });
   }
 
   private acpMcpServers(): McpServer[] {

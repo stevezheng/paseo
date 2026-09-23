@@ -59,6 +59,10 @@ import {
   getFeatureTooltip,
   getAgentControlHintKey,
   resolveRelativeAgentControlId,
+  resolveFavoriteModelCycle,
+  favoriteModelsForCycle,
+  resolveModelCycleBlock,
+  resolveModelCycleOptions,
   resolveAgentModelSelection,
 } from "@/composer/agent-controls/utils";
 import { useIsCompactFormFactor } from "@/constants/layout";
@@ -88,6 +92,7 @@ import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispat
 import {
   useAgentProfileEditor,
   useAgentProfilePicker,
+  useAgentProfiles,
   type AgentProfileApplyTarget,
   type AgentProfileEditorControls,
   type AgentProfilePicker,
@@ -478,40 +483,112 @@ function buildOpenChangeHandler(
 
 function useModelCycleShortcut(input: {
   disabled: boolean;
-  favoriteKeys: ReadonlySet<string>;
   isActiveComposer: boolean;
   modelOptions: AgentControlOption[] | undefined;
+  onApplyAgentProfile: ((profileId: string) => void) | undefined;
   onSelectModel: ((modelId: string) => void) | undefined;
+  onSelectProviderAndModel: ((provider: string, modelId: string) => void) | undefined;
   provider: string;
   selectedModelId: string | undefined;
+  serverId: string | null;
 }) {
+  const {
+    disabled,
+    isActiveComposer,
+    modelOptions,
+    onApplyAgentProfile,
+    onSelectModel,
+    onSelectProviderAndModel,
+    provider,
+    selectedModelId,
+    serverId,
+  } = input;
+  const { t } = useTranslation();
+  const toast = useToast();
+  const { preferences } = useFormPreferences();
+  const { profiles } = useAgentProfiles(serverId);
   const handlerIdRef = useRef(`model-control:${Math.random().toString(36).slice(2)}`);
-  const favoriteModelOptions = input.modelOptions?.filter((model) =>
-    input.favoriteKeys.has(`${input.provider}:${model.id}`),
+  const lastCycledProfileIdRef = useRef<string | null>(null);
+  const favoriteModels = useMemo(
+    () =>
+      favoriteModelsForCycle({
+        stored: preferences.favoriteModels,
+        profiles,
+      }),
+    [preferences.favoriteModels, profiles],
   );
+  const canSwitchProvider = Boolean(onSelectProviderAndModel);
+  const cycleModels = useMemo(
+    () =>
+      resolveModelCycleOptions({
+        favoriteModels,
+        selectedProvider: provider,
+        canSwitchProvider,
+        providerModels: modelOptions ?? [],
+      }),
+    [canSwitchProvider, favoriteModels, modelOptions, provider],
+  );
+  const cycleBlock = resolveModelCycleBlock({
+    favoriteModels,
+    selectedProvider: provider,
+    canSwitchProvider,
+  });
   const handle = useCallback(
     (action: KeyboardActionDefinition): boolean => {
-      let delta: 1 | -1 | null = null;
-      if (action.id === "message-input.favorite-model-previous") {
-        delta = -1;
-      } else if (
-        action.id === "message-input.favorite-model-next" ||
-        action.id === "message-input.model-cycle"
-      ) {
-        delta = 1;
+      if (disabled || !isActiveComposer || (!onSelectModel && !onSelectProviderAndModel)) {
+        return false;
       }
-      if (delta === null) return false;
-      if (input.disabled || !input.isActiveComposer || !input.onSelectModel) return false;
-      const nextModelId = resolveRelativeAgentControlId({
-        options: favoriteModelOptions ?? [],
-        selectedId: input.selectedModelId,
-        delta,
+      const next = resolveFavoriteModelCycle({
+        actionId: action.id,
+        favoriteModels,
+        selectedProvider: provider,
+        selectedModelId,
+        canSwitchProvider,
+        providerModels: modelOptions ?? [],
+        selectedProfileId: lastCycledProfileIdRef.current,
       });
-      if (!nextModelId) return false;
-      input.onSelectModel(nextModelId);
-      return true;
+      if (next) {
+        const canApplyProfile =
+          Boolean(next.profileId && onApplyAgentProfile) &&
+          (canSwitchProvider || next.provider === provider);
+        lastCycledProfileIdRef.current = next.profileId ?? null;
+        if (canApplyProfile && next.profileId) {
+          onApplyAgentProfile?.(next.profileId);
+          if (next.name) {
+            toast.show(t("agentControls.hints.modelCycleApplied", { name: next.name }));
+          }
+          return true;
+        }
+        pickDesktopModel({
+          nextProviderId: next.provider,
+          modelId: next.modelId,
+          currentProvider: provider,
+          onSelectModel,
+          onSelectProviderAndModel,
+        });
+        return true;
+      }
+      if (cycleBlock === "provider-locked") {
+        toast.show(t("agentControls.hints.modelCycleProviderLocked"));
+        return true;
+      }
+      return false;
     },
-    [favoriteModelOptions, input],
+    [
+      canSwitchProvider,
+      cycleBlock,
+      disabled,
+      favoriteModels,
+      isActiveComposer,
+      modelOptions,
+      onApplyAgentProfile,
+      onSelectModel,
+      onSelectProviderAndModel,
+      provider,
+      selectedModelId,
+      t,
+      toast,
+    ],
   );
 
   useKeyboardActionHandler({
@@ -522,10 +599,10 @@ function useModelCycleShortcut(input: {
       "message-input.favorite-model-next",
     ],
     enabled:
-      input.isActiveComposer &&
-      !input.disabled &&
-      Boolean(input.onSelectModel) &&
-      (favoriteModelOptions?.length ?? 0) > 1,
+      isActiveComposer &&
+      !disabled &&
+      Boolean(onSelectModel || onSelectProviderAndModel) &&
+      (cycleModels.length > 1 || cycleBlock === "provider-locked"),
     priority: 200,
     handle,
   });
@@ -791,12 +868,14 @@ function ControlledAgentControls({
 
   useModelCycleShortcut({
     disabled,
-    favoriteKeys,
     isActiveComposer,
     modelOptions,
+    onApplyAgentProfile,
     onSelectModel,
+    onSelectProviderAndModel,
     provider,
     selectedModelId,
+    serverId: modelSelectorServerId,
   });
   useThinkingStrengthShortcut({
     disabled,

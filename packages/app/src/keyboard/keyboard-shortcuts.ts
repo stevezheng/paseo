@@ -248,7 +248,7 @@ const SHORTCUT_HELP_LABEL_KEYS: Record<string, string> = {
   "cycle-theme": "settings.shortcuts.help.cycleTheme",
   "focus-message-input": "settings.shortcuts.help.focusMessageInput",
   "cycle-agent-mode": "settings.shortcuts.help.cycleAgentMode",
-  "cycle-model": "agentControls.hints.model",
+  "cycle-model": "settings.shortcuts.help.cycleAgentProfile",
   "decrease-thinking": "settings.shortcuts.help.decreaseThinking",
   "increase-thinking": "settings.shortcuts.help.increaseThinking",
   "previous-favorite-model": "settings.shortcuts.help.previousFavoriteModel",
@@ -855,7 +855,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     help: {
       id: "cycle-model",
       section: "agent-input",
-      label: "Change model",
+      label: "Cycle agent profile",
     },
   },
   {
@@ -868,7 +868,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     help: {
       id: "cycle-model",
       section: "agent-input",
-      label: "Change model",
+      label: "Cycle agent profile",
     },
   },
 
@@ -1027,7 +1027,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     help: {
       id: "previous-favorite-model",
       section: "agent-input",
-      label: "Previous favorite model",
+      label: "Previous agent profile",
     },
   },
   {
@@ -1040,7 +1040,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     help: {
       id: "next-favorite-model",
       section: "agent-input",
-      label: "Next favorite model",
+      label: "Next agent profile",
     },
   },
 

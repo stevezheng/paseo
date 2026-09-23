@@ -61,8 +61,14 @@ export function AgentProfileRow({
     [t],
   );
   const tags = useMemo(
-    () => buildAgentProfileTags({ profile, entries, formatFeatureCount }),
-    [entries, formatFeatureCount, profile],
+    () =>
+      buildAgentProfileTags({
+        profile,
+        entries,
+        formatFeatureCount,
+        cycleLabel: t("settings.host.agentProfiles.cycleTag"),
+      }),
+    [entries, formatFeatureCount, profile, t],
   );
   const summary = useMemo(() => tags.map((tag) => tag.label).join(" · "), [tags]);
 

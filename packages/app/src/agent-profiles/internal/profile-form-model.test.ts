@@ -146,6 +146,36 @@ describe("openAgentProfileForm", () => {
     expect(model.getState().submitValue).toMatchObject({ name: "UI work", provider: "claude" });
   });
 
+  it("submits cycle only when the switch is on", () => {
+    const model = openWithCatalog({ mode: "create" });
+    model.setName("Sol");
+    model.setProvider("codex", { label: "Codex" });
+
+    expect(model.getState().cycle).toBe(false);
+    expect(model.getState().submitValue).not.toHaveProperty("cycle");
+
+    model.setCycle(true);
+    expect(model.getState().submitValue).toMatchObject({ cycle: true });
+
+    model.setCycle(false);
+    expect(model.getState().submitValue).not.toHaveProperty("cycle");
+  });
+
+  it("seeds cycle from the stored profile", () => {
+    const model = openAgentProfileForm({
+      mode: "edit",
+      profile: {
+        id: "p1",
+        name: "Sol",
+        provider: "codex",
+        cycle: true,
+      },
+    });
+
+    expect(model.getState().cycle).toBe(true);
+    expect(model.getState().submitValue).toMatchObject({ cycle: true });
+  });
+
   it("omits blank text fields from the submitted value but never a selection", () => {
     const model = openWithCatalog({ mode: "create" });
     model.setName("  Cheap grunt  ");

@@ -51,6 +51,193 @@ export function resolveRelativeAgentControlId({
   return options[nextIndex]?.id ?? null;
 }
 
+export interface FavoriteModelRef {
+  provider: string;
+  modelId: string;
+  profileId?: string;
+  name?: string;
+}
+
+function favoriteModelKey(entry: FavoriteModelRef): string {
+  return entry.profileId ?? `${entry.provider}:${entry.modelId}`;
+}
+
+/** Profiles with `cycle: true` win. Then client leftovers. */
+export function favoriteModelsForCycle(input: {
+  stored: readonly FavoriteModelRef[] | undefined;
+  profiles:
+    | readonly {
+        id: string;
+        name?: string;
+        provider: string;
+        model?: string;
+        cycle?: boolean;
+      }[]
+    | null;
+}): FavoriteModelRef[] {
+  const cycled: FavoriteModelRef[] = [];
+  const seen = new Set<string>();
+  for (const profile of input.profiles ?? []) {
+    if (profile.cycle !== true) {
+      continue;
+    }
+    const modelId = profile.model?.trim() ?? "";
+    if (!modelId) {
+      continue;
+    }
+    const entry: FavoriteModelRef = {
+      provider: profile.provider,
+      modelId,
+      profileId: profile.id,
+      ...(profile.name ? { name: profile.name } : {}),
+    };
+    const key = favoriteModelKey(entry);
+    if (seen.has(key)) {
+      continue;
+    }
+    seen.add(key);
+    cycled.push(entry);
+  }
+  if (cycled.length > 0) {
+    return cycled;
+  }
+  if (input.stored && input.stored.length > 0) {
+    return [...input.stored];
+  }
+  return [];
+}
+
+function favoriteModelCycleDelta(actionId: string): 1 | -1 | null {
+  if (actionId === "message-input.favorite-model-previous") {
+    return -1;
+  }
+  if (
+    actionId === "message-input.favorite-model-next" ||
+    actionId === "message-input.model-cycle"
+  ) {
+    return 1;
+  }
+  return null;
+}
+
+function scopedFavoriteModels(input: {
+  favoriteModels: readonly FavoriteModelRef[];
+  selectedProvider: string;
+  canSwitchProvider: boolean;
+}): FavoriteModelRef[] {
+  return input.canSwitchProvider
+    ? [...input.favoriteModels]
+    : input.favoriteModels.filter((entry) => entry.provider === input.selectedProvider);
+}
+
+/**
+ * Cycle/favorite sets win. The provider catalog is only a last resort when
+ * nothing is marked — substituting it for a provider-locked cycle set would
+ * change a different model and look like the shortcut did the wrong thing.
+ */
+export function resolveModelCycleOptions(input: {
+  favoriteModels: readonly FavoriteModelRef[];
+  selectedProvider: string;
+  canSwitchProvider: boolean;
+  providerModels: readonly { id: string }[];
+}): readonly FavoriteModelRef[] {
+  const scoped = scopedFavoriteModels(input);
+  if (scoped.length > 1) {
+    return scoped;
+  }
+  if (input.favoriteModels.length === 0 && input.providerModels.length > 1) {
+    return input.providerModels.map((model) => ({
+      provider: input.selectedProvider,
+      modelId: model.id,
+    }));
+  }
+  return scoped;
+}
+
+/** Live sessions cannot apply a cycle set that spans other providers. */
+export function resolveModelCycleBlock(input: {
+  favoriteModels: readonly FavoriteModelRef[];
+  selectedProvider: string;
+  canSwitchProvider: boolean;
+}): "provider-locked" | null {
+  if (input.canSwitchProvider || input.favoriteModels.length < 2) {
+    return null;
+  }
+  if (scopedFavoriteModels(input).length < 2) {
+    return "provider-locked";
+  }
+  return null;
+}
+
+function resolveCycleSelectionId(input: {
+  options: readonly FavoriteModelRef[];
+  selectedProvider: string;
+  selectedModelId: string | null | undefined;
+  selectedProfileId?: string | null;
+}): string {
+  if (input.selectedProfileId) {
+    const byProfile = input.options.find((entry) => entry.profileId === input.selectedProfileId);
+    if (byProfile) {
+      return favoriteModelKey(byProfile);
+    }
+  }
+  const modelId = input.selectedModelId ?? "";
+  const match = input.options.find(
+    (entry) => entry.provider === input.selectedProvider && entry.modelId === modelId,
+  );
+  if (match) {
+    return favoriteModelKey(match);
+  }
+  return favoriteModelKey({
+    provider: input.selectedProvider,
+    modelId,
+  });
+}
+
+/** Ctrl+Shift+M cycles marked profiles, then favorites, then the provider catalog. */
+export function resolveFavoriteModelCycle({
+  actionId,
+  favoriteModels,
+  selectedProvider,
+  selectedModelId,
+  canSwitchProvider,
+  providerModels = [],
+  selectedProfileId,
+}: {
+  actionId: string;
+  favoriteModels: readonly FavoriteModelRef[];
+  selectedProvider: string;
+  selectedModelId: string | null | undefined;
+  canSwitchProvider: boolean;
+  providerModels?: readonly { id: string }[];
+  selectedProfileId?: string | null;
+}): FavoriteModelRef | null {
+  const delta = favoriteModelCycleDelta(actionId);
+  if (delta === null) {
+    return null;
+  }
+  const options = resolveModelCycleOptions({
+    favoriteModels,
+    selectedProvider,
+    canSwitchProvider,
+    providerModels,
+  });
+  const nextId = resolveRelativeAgentControlId({
+    options: options.map((entry) => ({ id: favoriteModelKey(entry) })),
+    selectedId: resolveCycleSelectionId({
+      options,
+      selectedProvider,
+      selectedModelId,
+      selectedProfileId,
+    }),
+    delta,
+  });
+  if (nextId === null) {
+    return null;
+  }
+  return options.find((entry) => favoriteModelKey(entry) === nextId) ?? null;
+}
+
 export function getFeatureTooltip(feature: Pick<AgentFeature, "label" | "tooltip">): string {
   return feature.tooltip ?? feature.label;
 }

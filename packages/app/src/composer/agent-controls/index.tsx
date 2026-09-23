@@ -110,6 +110,10 @@ type AgentControlSelector = "provider" | "mode" | "model" | "thinking" | `featur
 
 const EMPTY_AGENT_PROVIDER_DEFINITIONS: AgentProviderDefinition[] = [];
 
+function getAgentFeatures(agent: { features?: AgentFeature[] } | null): AgentFeature[] | undefined {
+  return agent?.features;
+}
+
 interface ControlledAgentControlsProps {
   provider: string;
   providerOptions?: AgentControlOption[];
@@ -125,7 +129,6 @@ interface ControlledAgentControlsProps {
   disabled?: boolean;
   isModelLoading?: boolean;
   modelSelectorProviders?: ProviderSelectorProvider[];
-  favoriteKeys?: ReadonlySet<string>;
   agentProfiles?: AgentProfilePicker | null;
   onApplyAgentProfile?: (profileId: string) => void;
   onEditAgentProfiles?: () => void;
@@ -668,7 +671,6 @@ function ControlledAgentControls({
   disabled = false,
   isModelLoading = false,
   modelSelectorProviders,
-  favoriteKeys = new Set<string>(),
   agentProfiles = null,
   onApplyAgentProfile,
   onEditAgentProfiles,
@@ -721,7 +723,7 @@ function ControlledAgentControls({
   const displayThinking = findOptionLabel(
     formattedThinkingOptions,
     selectedThinkingOptionId,
-    formattedThinkingOptions[0]?.label ?? t("agentControls.thinking.unknown"),
+    t("agentControls.thinking.unknown"),
   );
 
   const hasAnyControl = resolveHasAnyControl({
@@ -1798,15 +1800,6 @@ export const AgentControls = memo(function AgentControls({
   const modelOptions = useMemo<AgentControlOption[]>(() => {
     return (models ?? []).map((model) => ({ id: model.id, label: model.label }));
   }, [models]);
-  const favoriteKeys = useMemo(
-    () =>
-      new Set(
-        (preferences.favoriteModels ?? []).map(
-          (favorite) => `${favorite.provider}:${favorite.modelId}`,
-        ),
-      ),
-    [preferences.favoriteModels],
-  );
 
   const thinkingOptions = useMemo<AgentControlOption[]>(() => {
     return (modelSelection.thinkingOptions ?? []).map((option) => ({
@@ -1875,6 +1868,7 @@ export const AgentControls = memo(function AgentControls({
   const agentProfiles = useAgentProfilePicker({
     serverId,
     availableProviders: profileProviders,
+    availableFeatures: getAgentFeatures(agent),
     target: profileTarget,
   });
   const handleEditAgentProfiles = useEditAgentProfilesNavigation(serverId, agentProfiles !== null);
@@ -2012,7 +2006,6 @@ export const AgentControls = memo(function AgentControls({
         modelOptions={modelOptions}
         selectedModelId={modelSelection.activeModelId ?? undefined}
         onSelectModel={handleSelectModel}
-        favoriteKeys={favoriteKeys}
         agentProfiles={agentProfiles}
         onApplyAgentProfile={agentProfiles?.applyProfile}
         onEditAgentProfiles={handleEditAgentProfiles}
@@ -2068,8 +2061,7 @@ export function DraftAgentControls({
     return toThinkingControlOptions(thinkingOptions);
   }, [thinkingOptions]);
 
-  const effectiveSelectedThinkingOption =
-    selectedThinkingOptionId || mappedThinkingOptions[0]?.id || undefined;
+  const effectiveSelectedThinkingOption = selectedThinkingOptionId || undefined;
 
   const modelOptions = useMemo<AgentControlOption[]>(
     () =>
@@ -2098,6 +2090,7 @@ export function DraftAgentControls({
   const agentProfiles = useAgentProfilePicker({
     serverId: modelSelectorServerId,
     availableProviders: profileProviders,
+    availableFeatures: features,
     target: profileTarget,
   });
   const handleEditAgentProfiles = useEditAgentProfilesNavigation(

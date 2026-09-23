@@ -849,6 +849,21 @@ describe("sendQueuedComposerMessageNow", () => {
     const state = queue.state.get("agent");
     expect(state?.map((m) => m.id)).toEqual(["msg-1", "msg-2"]);
   });
+
+  it("surfaces object send failures as readable text instead of [object Object]", async () => {
+    const queue = createFakeQueue(
+      new Map([["agent", [{ id: "msg-1", text: "first", attachments: [] }]]]),
+    );
+    const result = await sendQueuedComposerMessageNow({
+      agentId: "agent",
+      messageId: "msg-1",
+      queue,
+      submitMessage: async () => {
+        throw { message: "Gemini quota exceeded" };
+      },
+    });
+    expect(result).toEqual({ status: "failed", errorMessage: "Gemini quota exceeded" });
+  });
 });
 
 describe("removeComposerAttachmentAtIndex", () => {

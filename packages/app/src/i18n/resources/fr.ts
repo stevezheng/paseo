@@ -2286,6 +2286,8 @@ export const fr: TranslationResources = {
         jumpToWorkspace: "Accéder à l'espace de travail",
         jumpToTab: "Aller à l'onglet",
         previousWorkspace: "Espace de travail précédent",
+        previousPrompt: "Prompt précédent",
+        nextPrompt: "Prompt suivant",
         nextWorkspace: "Espace de travail suivant",
         previousTab: "Onglet précédent",
         nextTab: "Onglet suivant",

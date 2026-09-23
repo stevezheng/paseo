@@ -307,10 +307,18 @@ type ThinkingOption = NonNullable<AgentModelDefinition["thinkingOptions"]>[numbe
 function resolveEffectiveThinking(
   thinkingOptions: ThinkingOption[] | null,
   resolvedThinkingId: string | null,
+  defaultThinkingOptionId: string | null | undefined,
 ): ThinkingOption | null {
   const selectedThinking =
     thinkingOptions?.find((option) => option.id === resolvedThinkingId) ?? null;
-  return selectedThinking ?? thinkingOptions?.[0] ?? null;
+  if (selectedThinking) {
+    return selectedThinking;
+  }
+  const defaultThinking =
+    thinkingOptions?.find((option) => option.id === defaultThinkingOptionId) ??
+    thinkingOptions?.find((option) => option.isDefault) ??
+    null;
+  return defaultThinking ?? thinkingOptions?.[0] ?? null;
 }
 
 function resolveModelDisplay(
@@ -370,7 +378,11 @@ export function resolveAgentModelSelection(input: {
 
   const thinkingOptions = selectedModel?.thinkingOptions ?? null;
   const resolvedThinkingId = resolveThinkingId(explicitThinkingOptionId, selectedModel);
-  const effectiveThinking = resolveEffectiveThinking(thinkingOptions, resolvedThinkingId);
+  const effectiveThinking = resolveEffectiveThinking(
+    thinkingOptions,
+    resolvedThinkingId,
+    selectedModel?.defaultThinkingOptionId,
+  );
   const selectedThinkingId = effectiveThinking?.id ?? null;
   const displayThinking = resolveThinkingDisplay(
     effectiveThinking,

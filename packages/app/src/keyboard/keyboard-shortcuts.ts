@@ -196,6 +196,8 @@ export const SHORTCUT_HELP_ROW_ORDER: Record<ShortcutSectionId, readonly string[
   "agent-input": [
     "focus-message-input",
     "cycle-agent-mode",
+    "agent-prompt-previous",
+    "agent-prompt-next",
     "cycle-model",
     "decrease-thinking",
     "increase-thinking",
@@ -225,6 +227,8 @@ const SHORTCUT_HELP_LABEL_KEYS: Record<string, string> = {
   "workspace-next": "settings.shortcuts.help.nextWorkspace",
   "workspace-tab-prev": "settings.shortcuts.help.previousTab",
   "workspace-tab-next": "settings.shortcuts.help.nextTab",
+  "agent-prompt-next": "settings.shortcuts.help.nextPrompt",
+  "agent-prompt-previous": "settings.shortcuts.help.previousPrompt",
   "workspace-pane-split-right": "settings.shortcuts.help.splitPaneRight",
   "workspace-pane-split-down": "settings.shortcuts.help.splitPaneDown",
   "workspace-pane-focus-left": "settings.shortcuts.help.focusPaneLeft",
@@ -720,6 +724,52 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       id: "workspace-tab-next",
       section: "tabs-panes",
       label: "Next tab",
+    },
+  },
+
+  // --- Prompt navigation ---
+  {
+    id: "agent-prompt-previous-cmd-alt-up-mac",
+    action: "agent.prompt.previous",
+    combo: "Ctrl+Alt+ArrowUp",
+    when: { mac: true, desktop: true, commandCenter: false, terminal: false },
+    help: {
+      id: "agent-prompt-previous",
+      section: "agent-input",
+      label: "Previous prompt",
+    },
+  },
+  {
+    id: "agent-prompt-previous-ctrl-alt-up-non-mac",
+    action: "agent.prompt.previous",
+    combo: "Ctrl+Alt+ArrowUp",
+    when: { mac: false, desktop: true, commandCenter: false, terminal: false },
+    help: {
+      id: "agent-prompt-previous",
+      section: "agent-input",
+      label: "Previous prompt",
+    },
+  },
+  {
+    id: "agent-prompt-next-ctrl-alt-down-mac",
+    action: "agent.prompt.next",
+    combo: "Ctrl+Alt+ArrowDown",
+    when: { mac: true, desktop: true, commandCenter: false, terminal: false },
+    help: {
+      id: "agent-prompt-next",
+      section: "agent-input",
+      label: "Next prompt",
+    },
+  },
+  {
+    id: "agent-prompt-next-ctrl-alt-down-non-mac",
+    action: "agent.prompt.next",
+    combo: "Ctrl+Alt+ArrowDown",
+    when: { mac: false, desktop: true, commandCenter: false, terminal: false },
+    help: {
+      id: "agent-prompt-next",
+      section: "agent-input",
+      label: "Next prompt",
     },
   },
 

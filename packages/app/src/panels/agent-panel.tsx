@@ -55,6 +55,8 @@ import {
   type AgentScreenReadySyncState,
 } from "@/hooks/use-agent-screen-state-machine";
 import { useArchiveAgent } from "@/hooks/use-archive-agent";
+import { useKeyboardActionHandler } from "@/hooks/use-keyboard-action-handler";
+import type { KeyboardActionDefinition } from "@/keyboard/keyboard-action-dispatcher";
 import { useContainerWidthBelow } from "@/hooks/use-container-width";
 import { reconcileMissingAgentStateWithPresentAgent } from "@/panels/agent-panel-load-state";
 import { TimelineSyncStatus } from "@/timeline/sync-status";
@@ -727,6 +729,35 @@ function AgentPanelBody({
   );
 }
 
+function useAgentPromptJumpShortcut(input: {
+  serverId: string;
+  agentId?: string;
+  isPaneFocused: boolean;
+  streamViewRef: React.RefObject<AgentStreamViewHandle | null>;
+}) {
+  const { serverId, agentId, isPaneFocused, streamViewRef } = input;
+  const handle = useCallback(
+    (action: KeyboardActionDefinition): boolean => {
+      if (action.id === "agent.prompt.previous") {
+        return streamViewRef.current?.jumpToPreviousPrompt() ?? false;
+      }
+      if (action.id === "agent.prompt.next") {
+        return streamViewRef.current?.jumpToNextPrompt() ?? false;
+      }
+      return false;
+    },
+    [streamViewRef],
+  );
+  useKeyboardActionHandler({
+    handlerId: `agent-prompt-actions:${serverId}:${agentId ?? "pending"}`,
+    actions: ["agent.prompt.previous", "agent.prompt.next"],
+    enabled: isPaneFocused && Boolean(agentId),
+    priority: 100,
+    isActive: () => isPaneFocused,
+    handle,
+  });
+}
+
 function ChatAgentContent({
   serverId,
   workspaceId,
@@ -756,6 +787,7 @@ function ChatAgentContent({
     routeKey: string;
     reason: "initial-entry" | "resume";
   } | null>(null);
+  useAgentPromptJumpShortcut({ serverId, agentId, isPaneFocused, streamViewRef });
   const agentState = useSessionStore(
     useShallow((state) => selectChatAgentState(state, serverId, agentId)),
   );

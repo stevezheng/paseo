@@ -50,6 +50,37 @@ export function resolveActivePromptSeq(
   return activeSeq;
 }
 
+/**
+ * Previous means "back to the top of the turn I am reading" before it means "the turn before
+ * that": an answer parks the reader far below the prompt that produced it, so stepping straight
+ * past that prompt skips the question they came back for. A reading position that no prompt can
+ * claim — rows still waiting for their timeline cursor, or a transcript that has not reported one
+ * yet — belongs to the newest turn, which is where an unscrolled reader sits.
+ */
+export function resolvePreviousPromptSeq(
+  prompts: readonly ChatOutlinePrompt[],
+  activeSeq: number | null,
+  readingSeq: number | null,
+): number | null {
+  const activeIndex = prompts.findIndex((prompt) => prompt.seq === activeSeq);
+  if (activeIndex < 0) {
+    return readingSeq === null ? (prompts.at(-1)?.seq ?? null) : null;
+  }
+  const activePromptSeq = prompts[activeIndex]?.seq ?? null;
+  if (activePromptSeq !== null && readingSeq !== null && readingSeq > activePromptSeq) {
+    return activePromptSeq;
+  }
+  return prompts[activeIndex - 1]?.seq ?? null;
+}
+
+export function resolveNextPromptSeq(
+  prompts: readonly ChatOutlinePrompt[],
+  activeSeq: number | null,
+): number | null {
+  const activeIndex = prompts.findIndex((prompt) => prompt.seq === activeSeq);
+  return activeIndex >= 0 ? (prompts[activeIndex + 1]?.seq ?? null) : null;
+}
+
 export interface ActivePromptSource {
   subscribe: (listener: () => void) => () => void;
   getActiveSeq: () => number | null;

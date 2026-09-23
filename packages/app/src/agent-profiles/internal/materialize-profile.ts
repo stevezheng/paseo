@@ -1,10 +1,13 @@
 import type { AgentConfigApply, AgentProfile } from "@getpaseo/protocol/messages";
+import type { AgentFeature } from "@getpaseo/protocol/agent-types";
 
 /**
  * A profile with its blank fields resolved away. Storage keeps every field
  * optional and lets the user clear one to an empty string; applying has to know
  * the difference between "set this" and "leave whatever is there alone", and
- * every consumer would otherwise re-derive the same trim-and-drop rules.
+ * every consumer would otherwise re-derive the same trim-and-drop rules. Omitted
+ * toggle values are materialized as false when the current feature catalog is
+ * available, so switching profiles does not inherit a previous toggle state.
  */
 export interface MaterializedAgentProfile {
   provider: string;
@@ -19,13 +22,26 @@ function trimmed(value: string | undefined): string {
   return value?.trim() ?? "";
 }
 
-export function materializeAgentProfile(profile: AgentProfile): MaterializedAgentProfile {
+export function materializeAgentProfile(
+  profile: AgentProfile,
+  availableFeatures: readonly AgentFeature[] = [],
+): MaterializedAgentProfile {
+  const featureValues = { ...profile.featureValues };
+  for (const feature of availableFeatures) {
+    if (
+      feature.type === "toggle" &&
+      !Object.prototype.hasOwnProperty.call(featureValues, feature.id)
+    ) {
+      featureValues[feature.id] = false;
+    }
+  }
+
   return {
     provider: trimmed(profile.provider),
     modelId: trimmed(profile.model),
     modeId: trimmed(profile.modeId),
     thinkingOptionId: trimmed(profile.thinkingOptionId),
-    featureValues: profile.featureValues ?? {},
+    featureValues,
   };
 }
 

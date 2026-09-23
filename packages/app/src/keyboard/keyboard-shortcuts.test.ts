@@ -223,6 +223,30 @@ describe("keyboard-shortcuts", () => {
       payload: { delta: 1 },
     },
     {
+      name: "matches Ctrl+Alt+Up to jump to the previous prompt on mac desktop",
+      event: { key: "ArrowUp", code: "ArrowUp", ctrlKey: true, altKey: true },
+      context: { isMac: true, isDesktop: true },
+      action: "agent.prompt.previous",
+    },
+    {
+      name: "matches Ctrl+Alt+Up to jump to the previous prompt on non-mac desktop",
+      event: { key: "ArrowUp", code: "ArrowUp", ctrlKey: true, altKey: true },
+      context: { isMac: false, isDesktop: true },
+      action: "agent.prompt.previous",
+    },
+    {
+      name: "matches Ctrl+Alt+Down to jump to the next prompt on mac desktop",
+      event: { key: "ArrowDown", code: "ArrowDown", ctrlKey: true, altKey: true },
+      context: { isMac: true, isDesktop: true },
+      action: "agent.prompt.next",
+    },
+    {
+      name: "matches Ctrl+Alt+Down to jump to the next prompt on non-mac desktop",
+      event: { key: "ArrowDown", code: "ArrowDown", ctrlKey: true, altKey: true },
+      context: { isMac: false, isDesktop: true },
+      action: "agent.prompt.next",
+    },
+    {
       name: "matches Mod+T to open new tab",
       event: { key: "t", code: "KeyT", metaKey: true },
       context: { isMac: true },
@@ -854,6 +878,7 @@ describe("keyboard-shortcut help sections", () => {
     const workspaces = sections.find((section) => section.id === "workspaces");
     const layout = sections.find((section) => section.id === "layout");
     const openProject = findRow(sections, "new-agent");
+    const previousPrompt = findRow(sections, "agent-prompt-previous");
     const cycleAgentMode = findRow(sections, "cycle-agent-mode");
     const cycleModel = findRow(sections, "cycle-model");
     const decreaseThinking = findRow(sections, "decrease-thinking");
@@ -866,6 +891,7 @@ describe("keyboard-shortcut help sections", () => {
     expect(layout?.titleKey).toBe("settings.shortcuts.sections.layout");
     expect(openProject?.labelKey).toBe("settings.shortcuts.help.openProject");
     expect(openProject?.label).toBe("Open project");
+    expect(previousPrompt?.labelKey).toBe("settings.shortcuts.help.previousPrompt");
     expect(cycleAgentMode?.labelKey).toBe("settings.shortcuts.help.cycleAgentMode");
     expect(cycleModel?.labelKey).toBe("settings.shortcuts.help.cycleAgentProfile");
     expect(decreaseThinking?.labelKey).toBe("settings.shortcuts.help.decreaseThinking");

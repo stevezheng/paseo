@@ -1,3 +1,4 @@
+import type { SessionConfigOption } from "@agentclientprotocol/sdk";
 import type { Logger } from "pino";
 import { z } from "zod";
 
@@ -49,6 +50,7 @@ interface GenericACPAgentClientOptions {
   diagnosticPhaseTimeoutMs?: number;
   clientCapabilityMeta?: ACPClientCapabilityMeta;
   configFeatureOptions?: ACPConfigFeatureOption[];
+  configOptionsTransformer?: (configOptions: SessionConfigOption[]) => SessionConfigOption[];
   extensionCommandsParser?: ACPExtensionCommandsParser;
   catalogModelResolver?: ACPCatalogModelResolver;
   now?: () => number;
@@ -75,6 +77,7 @@ export class GenericACPAgentClient extends ACPAgentClient {
       clientCapabilities: providerParams.clientCapabilities,
       clientCapabilityMeta: options.clientCapabilityMeta,
       configFeatureOptions: options.configFeatureOptions,
+      configOptionsTransformer: options.configOptionsTransformer,
       extensionCommandsParser: options.extensionCommandsParser,
       catalogModelResolver: options.catalogModelResolver,
       now: options.now,

@@ -36,6 +36,7 @@ import {
 } from "@/utils/image-attachments-from-files";
 import type { ComposerAttachment } from "@/attachments/types";
 import type { ImageAttachment, MessagePayload, TextReplacement } from "@/composer/types";
+import { toErrorMessage } from "@/utils/error-messages";
 import { focusWithRetries } from "@/utils/web-focus";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Shortcut } from "@/components/ui/shortcut";
@@ -1134,9 +1135,8 @@ function resolveMessageInputProps(props: MessageInputProps): ResolvedMessageInpu
 }
 
 function extractErrorMessage(error: unknown): string | null {
-  if (error instanceof Error) return error.message;
-  if (typeof error === "string") return error;
-  return null;
+  const message = toErrorMessage(error);
+  return message && message !== "Unknown error" ? message : null;
 }
 
 export const MessageInput = forwardRef<MessageInputRef, MessageInputProps>(

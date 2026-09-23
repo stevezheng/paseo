@@ -524,10 +524,19 @@ function resolveExpressTrustProxySetting(config: PaseoDaemonConfig): true | stri
   return config.trustedProxies ?? ["loopback"];
 }
 
+function optionalDaemonLists(
+  config: PaseoDaemonConfig,
+): Pick<MutableDaemonConfig, "terminalProfiles" | "agentProfiles"> {
+  return {
+    ...(config.terminalProfiles !== undefined ? { terminalProfiles: config.terminalProfiles } : {}),
+    ...(config.agentProfiles !== undefined ? { agentProfiles: config.agentProfiles } : {}),
+  };
+}
+
 function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDaemonConfig {
   const providers = config.providerOverrides ?? {};
 
-  const initialConfig: MutableDaemonConfig = {
+  return {
     relay: { enabled: config.relayEnabled ?? true },
     mcp: {
       enabled: config.mcpEnabled ?? true,
@@ -552,17 +561,8 @@ function createInitialMutableDaemonConfig(config: PaseoDaemonConfig): MutableDae
     pluginsEnabled: config.pluginsEnabled ?? false,
     plugins: config.plugins ?? {},
     skills: { selection: config.skillSelection },
+    ...optionalDaemonLists(config),
   };
-
-  if (config.terminalProfiles !== undefined) {
-    initialConfig.terminalProfiles = config.terminalProfiles;
-  }
-
-  if (config.agentProfiles !== undefined) {
-    initialConfig.agentProfiles = config.agentProfiles;
-  }
-
-  return initialConfig;
 }
 
 export async function createPaseoDaemon(

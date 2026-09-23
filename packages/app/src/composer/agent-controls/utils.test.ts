@@ -462,6 +462,29 @@ describe("resolveAgentModelSelection", () => {
     expect(selection.selectedThinkingId).toBe("low");
   });
 
+  it("remaps a stale thinking id to the model default instead of the first option", () => {
+    const selection = resolveAgentModelSelection({
+      models: [
+        {
+          id: "grok-4.6",
+          provider: "cursor",
+          label: "Cursor Grok 4.6",
+          thinkingOptions: [
+            { id: "false", label: "Off" },
+            { id: "true", label: "On", isDefault: true },
+          ],
+          defaultThinkingOptionId: "true",
+        },
+      ],
+      runtimeModelId: "grok-4.6",
+      configuredModelId: "grok-4.6",
+      explicitThinkingOptionId: "high",
+    });
+
+    expect(selection.selectedThinkingId).toBe("true");
+    expect(selection.displayThinking).toBe("On");
+  });
+
   it("uses explicit thinking option when provided", () => {
     const selection = resolveAgentModelSelection({
       models: [

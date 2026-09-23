@@ -324,6 +324,7 @@ export function useAgentInputDraft(input: UseAgentInputDraftInput): AgentInputDr
         features: draftFeatures,
         onSetFeature: setDraftFeatureValue,
         onApplyAgentProfile: applyDraftAgentProfile,
+        effectiveThinkingOptionId,
       }),
       commandDraftConfig,
     };

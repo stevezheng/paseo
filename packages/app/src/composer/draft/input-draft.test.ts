@@ -122,6 +122,33 @@ describe("resolveEffectiveComposerThinkingOptionId", () => {
       ),
     ).toBe("high");
   });
+
+  it("remaps a previous provider thinking id to the new model's default", () => {
+    expect(
+      resolveEffectiveComposerThinkingOptionId(
+        {
+          provider: "cursor",
+          modelId: "grok-4.6",
+          modeId: "agent",
+          thinkingOptionId: "high",
+          availableModels: [
+            {
+              provider: "cursor",
+              id: "grok-4.6",
+              label: "Cursor Grok 4.6",
+              defaultThinkingOptionId: "true",
+              thinkingOptions: [
+                { id: "false", label: "Off" },
+                { id: "true", label: "On", isDefault: true },
+              ],
+            },
+          ],
+          modeOptions: [],
+        },
+        "grok-4.6",
+      ),
+    ).toBe("true");
+  });
 });
 
 describe("buildDraftComposerCommandConfig", () => {

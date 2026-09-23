@@ -24,8 +24,16 @@ export function buildDraftAgentControls(input: {
   onSetFeature?: DraftAgentControlsProps["onSetFeature"];
   onApplyAgentProfile: DraftAgentControlsProps["onApplyAgentProfile"];
   onDropdownClose?: DraftAgentControlsProps["onDropdownClose"];
+  effectiveThinkingOptionId?: string;
 }): DraftAgentControlsProps {
-  const { formState, features, onSetFeature, onApplyAgentProfile, onDropdownClose } = input;
+  const {
+    formState,
+    features,
+    onSetFeature,
+    onApplyAgentProfile,
+    onDropdownClose,
+    effectiveThinkingOptionId,
+  } = input;
   return {
     providerDefinitions: formState.providerDefinitions,
     selectedProvider: formState.selectedProvider,
@@ -40,7 +48,7 @@ export function buildDraftAgentControls(input: {
     isAllModelsLoading: formState.isAllModelsLoading,
     onSelectProviderAndModel: formState.setProviderAndModelFromUser,
     thinkingOptions: formState.availableThinkingOptions,
-    selectedThinkingOptionId: formState.selectedThinkingOptionId,
+    selectedThinkingOptionId: effectiveThinkingOptionId || formState.selectedThinkingOptionId,
     onSelectThinkingOption: formState.setThinkingOptionFromUser,
     onApplyAgentProfile,
     features,

@@ -3,6 +3,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { createRef } from "react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { StreamItem } from "@/types/stream";
 import type { StreamViewportHandle } from "../strategy";
 import { useChatOutline } from "./use-chat-outline";
 
@@ -21,6 +22,37 @@ vi.mock("@/runtime/host-runtime", () => ({
     fetchAgentTimeline: runtime.fetchAgentTimeline,
   }),
 }));
+
+const transcript: StreamItem[] = [
+  {
+    kind: "user_message",
+    id: "prompt-9",
+    text: "older prompt",
+    timestamp: new Date(9),
+    timelineCursor: { epoch: "epoch-1", seq: 9 },
+  },
+  {
+    kind: "assistant_message",
+    id: "answer-9",
+    text: "older answer",
+    timestamp: new Date(14),
+    timelineCursor: { epoch: "epoch-1", seq: 14 },
+  },
+  {
+    kind: "user_message",
+    id: "prompt-20",
+    text: "newest prompt",
+    timestamp: new Date(20),
+    timelineCursor: { epoch: "epoch-1", seq: 20 },
+  },
+  {
+    kind: "assistant_message",
+    id: "answer-20",
+    text: "newest answer",
+    timestamp: new Date(31),
+    timelineCursor: { epoch: "epoch-1", seq: 31 },
+  },
+];
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -202,6 +234,46 @@ describe("useChatOutline", () => {
     await waitFor(() => expect(result.current.prompts[0]?.preview).toBe("Replaced conversation"));
     expect(runtime.listAgentTimelinePrompts).toHaveBeenCalledTimes(2);
     expect(runtime.subscribeAgentTimeline).not.toHaveBeenCalled();
+  });
+
+  it("walks back from an answer to the prompt that produced it", async () => {
+    runtime.listAgentTimelinePrompts.mockResolvedValue({
+      epoch: "epoch-1",
+      prompts: [
+        { seq: 9, timestamp: new Date(9).toISOString(), preview: "older prompt" },
+        { seq: 20, timestamp: new Date(20).toISOString(), preview: "newest prompt" },
+      ],
+    });
+    const scrollToMessage = vi.fn();
+    const viewportRef = createRef<StreamViewportHandle>();
+    viewportRef.current = {
+      scrollToBottom: vi.fn(),
+      prepareForViewportChange: vi.fn(),
+      scrollToMessage,
+    };
+    const { result } = renderHook(() =>
+      useChatOutline({
+        agentId: "agent-1",
+        serverId: "server-1",
+        timelineEpoch: "epoch-1",
+        tail: transcript,
+        head: [],
+        enabled: true,
+        viewportRef,
+        onJumpError: vi.fn(),
+      }),
+    );
+    await waitFor(() => expect(result.current.prompts).toHaveLength(2));
+
+    // The reader is at the bottom of the newest answer, so the first press lands on the prompt
+    // above it and only the second one steps back a turn.
+    act(() => result.current.reportReadingPosition(31));
+    expect(result.current.jumpToPreviousPrompt()).toBe(true);
+    expect(scrollToMessage).toHaveBeenLastCalledWith("prompt-20");
+
+    act(() => result.current.reportReadingPosition(20));
+    expect(result.current.jumpToPreviousPrompt()).toBe(true);
+    expect(scrollToMessage).toHaveBeenLastCalledWith("prompt-9");
   });
 
   it("reports a failed unloaded prompt jump", async () => {

@@ -1,4 +1,5 @@
 import { i18n } from "@/i18n/i18next";
+import { toErrorMessage } from "@/utils/error-messages";
 
 export type AgentInputSubmitResult = "noop" | "queued" | "submitted" | "failed";
 
@@ -20,6 +21,13 @@ export interface AgentInputSubmitActionInput<TAttachment> {
   setIsProcessing: (isProcessing: boolean) => void;
   onSubmitError?: (error: unknown) => void;
   failedToSendMessage?: string;
+}
+
+function resolveSendErrorMessage(error: unknown, fallback: string): string {
+  const message = toErrorMessage(error);
+  return message && message !== "Unknown error" && message !== "[object Object]"
+    ? message
+    : fallback;
 }
 
 export async function submitAgentInput<TAttachment>(
@@ -71,9 +79,10 @@ export async function submitAgentInput<TAttachment>(
       input.setAttachments(attachments);
     }
     input.setSendError(
-      error instanceof Error
-        ? error.message
-        : (input.failedToSendMessage ?? i18n.t("composer.errors.failedToSend")),
+      resolveSendErrorMessage(
+        error,
+        input.failedToSendMessage ?? i18n.t("composer.errors.failedToSend"),
+      ),
     );
     input.setIsProcessing(false);
     return "failed";

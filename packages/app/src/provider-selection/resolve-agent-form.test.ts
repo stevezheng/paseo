@@ -260,6 +260,19 @@ describe("resolveThinkingOptionId", () => {
       }),
     ).toBe("low");
   });
+
+  it("keeps the requested option when the model has not advertised thinking options yet", () => {
+    const modelsWithoutThinking: AgentModelDefinition[] = [
+      { provider: "cursor", id: "grok-4.6", label: "Grok 4.6", isDefault: true },
+    ];
+    expect(
+      resolveThinkingOptionId({
+        availableModels: modelsWithoutThinking,
+        modelId: "grok-4.6",
+        requestedThinkingOptionId: "high",
+      }),
+    ).toBe("high");
+  });
 });
 
 describe("resolveModelThinkingOptionId", () => {
@@ -1072,6 +1085,42 @@ describe("resolveAgentForm", () => {
 
       expect(next.form.thinkingOptionId).toBe("low");
     });
+
+    it("does not keep the previous provider thinking id when switching to Cursor", () => {
+      const cursorDefinition: AgentProviderDefinition = {
+        id: "cursor",
+        label: "Cursor",
+        description: "Cursor test provider",
+        defaultModeId: "agent",
+        modes: [{ id: "agent", label: "Agent", icon: "ShieldAlert", colorTier: "moderate" }],
+      };
+      const state = makeState({
+        provider: "claude",
+        model: "claude-sonnet-5",
+        thinkingOptionId: "high",
+      });
+      const next = resolveAgentForm(state, {
+        type: "SET_PROVIDER_AND_MODEL_FROM_USER",
+        provider: "cursor",
+        modelId: "grok-4.6",
+        providerDef: cursorDefinition,
+        providerModels: [
+          {
+            provider: "cursor",
+            id: "grok-4.6",
+            label: "Cursor Grok 4.6",
+            isDefault: true,
+            defaultThinkingOptionId: "true",
+            thinkingOptions: [
+              { id: "false", label: "Off" },
+              { id: "true", label: "On", isDefault: true },
+            ],
+          },
+        ],
+      });
+
+      expect(next.form.thinkingOptionId).toBe("true");
+    });
   });
 
   describe("SET_MODE_FROM_USER", () => {
@@ -1117,6 +1166,64 @@ describe("resolveAgentForm", () => {
       });
 
       expect(next.form.thinkingOptionId).toBe("low");
+    });
+
+    it("keeps profile thinking when the catalog has not advertised options yet", () => {
+      const grokWithoutThinking: AgentModelDefinition[] = [
+        { provider: "cursor", id: "grok-4.6", label: "Grok 4.6", isDefault: true },
+      ];
+      const grokWithThinking: AgentModelDefinition[] = [
+        {
+          provider: "cursor",
+          id: "grok-4.6",
+          label: "Grok 4.6",
+          isDefault: true,
+          defaultThinkingOptionId: "low",
+          thinkingOptions: [
+            { id: "low", label: "Low", isDefault: true },
+            { id: "high", label: "High" },
+          ],
+        },
+      ];
+      const cursorDefinition: AgentProviderDefinition = {
+        id: "cursor",
+        label: "Cursor",
+        description: "Cursor test provider",
+        defaultModeId: "agent",
+        modes: [{ id: "agent", label: "Agent", icon: "ShieldAlert", colorTier: "moderate" }],
+      };
+      const applied = resolveAgentForm(makeState(), {
+        type: "APPLY_PROFILE_FROM_USER",
+        provider: "cursor",
+        modelId: "grok-4.6",
+        modeId: "agent",
+        thinkingOptionId: "high",
+        providerDef: cursorDefinition,
+        providerModels: grokWithoutThinking,
+        providerPrefs: undefined,
+      });
+      expect(applied.form.thinkingOptionId).toBe("high");
+
+      const incomplete = resolveAgentForm(applied, {
+        type: "COMPLETE_RESOLUTION",
+        initialValues: undefined,
+        preferences: null,
+        providerModelsByProvider: makeProviderModelsByProvider([["cursor", grokWithoutThinking]]),
+        allowedProviderMap: makeProviderMap(cursorDefinition),
+      });
+      expect(incomplete.form.thinkingOptionId).toBe("high");
+
+      const next = resolveAgentForm(
+        { ...incomplete, resolution: PENDING_AGENT_FORM_RESOLUTION },
+        {
+          type: "COMPLETE_RESOLUTION",
+          initialValues: undefined,
+          preferences: null,
+          providerModelsByProvider: makeProviderModelsByProvider([["cursor", grokWithThinking]]),
+          allowedProviderMap: makeProviderMap(cursorDefinition),
+        },
+      );
+      expect(next.form.thinkingOptionId).toBe("high");
     });
   });
 

@@ -2269,6 +2269,8 @@ export const ru: TranslationResources = {
         jumpToWorkspace: "Перейти к рабочему пространству",
         jumpToTab: "Перейти на вкладку",
         previousWorkspace: "Предыдущее рабочее пространство",
+        previousPrompt: "Предыдущий запрос",
+        nextPrompt: "Следующий запрос",
         nextWorkspace: "Следующее рабочее пространство",
         previousTab: "Предыдущая вкладка",
         nextTab: "Следующая вкладка",

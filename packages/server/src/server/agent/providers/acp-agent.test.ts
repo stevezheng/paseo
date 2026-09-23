@@ -18,6 +18,7 @@ import {
 import {
   ACPAgentClient,
   ACPAgentSession,
+  type ACPConfigFeatureOption,
   type SpawnedACPProcess,
   type SessionStateResponse,
   buildACPClientCapabilities,
@@ -29,6 +30,7 @@ import {
   resolveACPModelSelection,
   summarizeACPRequestError,
 } from "./acp-agent.js";
+import { CURSOR_FAST_FEATURE_OPTION } from "./cursor-acp-agent.js";
 import type { ProcessTerminator, TreeKillTarget } from "../../../utils/tree-kill.js";
 import {
   COPILOT_AGENT_FEATURE_OPTION,
@@ -125,6 +127,7 @@ interface ACPConfiguredOverrideInternals {
   availableModels: Array<{ modelId: string; name: string; description?: string | null }> | null;
   currentMode: string | null;
   currentModel: string | null;
+  thinkingOptionId: string | null;
   applyConfiguredOverrides(): Promise<void>;
 }
 
@@ -182,7 +185,9 @@ function createSessionWithConfig(
     provider?: string;
     modeId?: string | null;
     model?: string | null;
+    thinkingOptionId?: string | null;
     featureValues?: Record<string, unknown>;
+    configFeatureOptions?: ACPConfigFeatureOption[];
   } = {},
   logger: ReturnType<typeof createTestLogger> = createTestLogger(),
 ): ACPAgentSession {
@@ -192,6 +197,7 @@ function createSessionWithConfig(
       cwd: "/tmp/paseo-acp-test",
       modeId: config.modeId ?? undefined,
       model: config.model ?? undefined,
+      thinkingOptionId: config.thinkingOptionId ?? undefined,
       featureValues: config.featureValues,
     },
     {
@@ -199,6 +205,7 @@ function createSessionWithConfig(
       logger,
       defaultCommand: ["claude", "--acp"],
       defaultModes: [],
+      configFeatureOptions: config.configFeatureOptions,
       capabilities: {
         supportsStreaming: true,
         supportsSessionPersistence: true,
@@ -209,6 +216,19 @@ function createSessionWithConfig(
       },
     },
   );
+}
+
+function cursorFastConfigOption(currentValue: "false" | "true"): SessionConfigOption {
+  return {
+    id: "fast",
+    name: "Fast",
+    type: "select",
+    currentValue,
+    options: [
+      { value: "false", name: "Off" },
+      { value: "true", name: "Fast" },
+    ],
+  };
 }
 
 function createKiroSession(
@@ -1585,6 +1605,194 @@ describe("ACPAgentSession Zed parity", () => {
     ]);
   });
 
+  test("coerces a boolean Cursor fast profile value to the ACP string option", async () => {
+    const setSessionConfigOption = vi.fn(async () => ({
+      configOptions: [cursorFastConfigOption("true")],
+    }));
+    const session = createSessionWithConfig({
+      provider: "cursor",
+      featureValues: { fast: true },
+      configFeatureOptions: [CURSOR_FAST_FEATURE_OPTION],
+    });
+    const { internals } = prepareConfiguredOverrideSession(session, {
+      configOptions: [cursorFastConfigOption("false")],
+      connection: { setSessionConfigOption },
+    });
+
+    await internals.applyConfiguredOverrides();
+
+    expect(setSessionConfigOption).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      configId: "fast",
+      value: "true",
+    });
+  });
+
+  test("refreshes config options after a Cursor model switch so thinking uses the new model", async () => {
+    const logger = createTestLogger();
+    const childLogger = { trace: vi.fn(), warn: vi.fn() };
+    vi.spyOn(logger, "child").mockReturnValue(asInternals<typeof logger>(childLogger));
+    const setSessionConfigOption = vi.fn(async ({ configId }: { configId: string }) => ({
+      configOptions: configId === "fast" ? [cursorFastConfigOption("true")] : [],
+    }));
+    const session = createSessionWithConfig(
+      {
+        provider: "cursor",
+        model: "composer-2.5",
+        thinkingOptionId: "high",
+        configFeatureOptions: [CURSOR_FAST_FEATURE_OPTION],
+      },
+      logger,
+    );
+    const { internals, unstableSetSessionModel } = prepareConfiguredOverrideSession(session, {
+      currentModel: "grok-4.6",
+      availableModels: [
+        { modelId: "grok-4.6", name: "Grok 4.6", description: null },
+        { modelId: "composer-2.5", name: "Composer 2.5", description: null },
+      ],
+      configOptions: [
+        selectConfigOption("thought_level", ["low", "high"], "low"),
+        cursorFastConfigOption("true"),
+      ],
+      connection: { setSessionConfigOption },
+    });
+    internals.thinkingOptionId = null;
+
+    await expect(internals.applyConfiguredOverrides()).resolves.toBeUndefined();
+    expect(unstableSetSessionModel).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      modelId: "composer-2.5",
+    });
+    expect(setSessionConfigOption).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      configId: "fast",
+      value: "true",
+    });
+    expect(setSessionConfigOption).not.toHaveBeenCalledWith({
+      sessionId: "session-1",
+      configId: "thought_level-option",
+      value: "high",
+    });
+    expect(childLogger.warn).toHaveBeenCalledWith(
+      { value: "high" },
+      "cursor does not expose ACP thought-level selection; using provider default thinking",
+    );
+  });
+
+  test("does not fail session start when the current model rejects a stale effort option", async () => {
+    const logger = createTestLogger();
+    const childLogger = { trace: vi.fn(), warn: vi.fn() };
+    vi.spyOn(logger, "child").mockReturnValue(asInternals<typeof logger>(childLogger));
+    const setSessionConfigOption = vi.fn(async () => {
+      throw new Error("Unknown model config option: effort");
+    });
+    const session = createSessionWithConfig(
+      {
+        provider: "cursor",
+        thinkingOptionId: "high",
+      },
+      logger,
+    );
+    const { internals } = prepareConfiguredOverrideSession(session, {
+      currentModel: "grok-4.6",
+      availableModels: [{ modelId: "grok-4.6", name: "Grok 4.6", description: null }],
+      configOptions: [selectConfigOption("thought_level", ["low", "high"], "low")],
+      connection: { setSessionConfigOption },
+    });
+    internals.thinkingOptionId = null;
+
+    await expect(internals.applyConfiguredOverrides()).resolves.toBeUndefined();
+    expect(setSessionConfigOption).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      configId: "thought_level-option",
+      value: "high",
+    });
+    expect(childLogger.warn).toHaveBeenCalledWith(
+      { value: "high" },
+      "cursor does not expose ACP thought-level selection; using provider default thinking",
+    );
+  });
+
+  test("does not send a stale Claude thinking id to a Cursor model that only has on/off", async () => {
+    const logger = createTestLogger();
+    const childLogger = { trace: vi.fn(), warn: vi.fn() };
+    vi.spyOn(logger, "child").mockReturnValue(asInternals<typeof logger>(childLogger));
+    const setSessionConfigOption = vi.fn(async () => ({
+      configOptions: [selectConfigOption("thought_level", ["false", "true"], "true")],
+    }));
+    const session = createSessionWithConfig(
+      {
+        provider: "cursor",
+        thinkingOptionId: "high",
+      },
+      logger,
+    );
+    const { internals } = prepareConfiguredOverrideSession(session, {
+      configOptions: [selectConfigOption("thought_level", ["false", "true"], "true")],
+      connection: { setSessionConfigOption },
+    });
+    internals.thinkingOptionId = null;
+
+    await expect(internals.applyConfiguredOverrides()).resolves.toBeUndefined();
+    expect(setSessionConfigOption).not.toHaveBeenCalled();
+    expect(childLogger.warn).toHaveBeenCalledWith(
+      { value: "high" },
+      "is not a valid cursor thought-level option. Available options: false, true",
+    );
+  });
+
+  test("does not fail session start when Cursor rejects a stale thinking value as Invalid params", async () => {
+    const setSessionConfigOption = vi.fn(async () => {
+      throw {
+        code: -32602,
+        message: "Invalid params",
+        data: { message: "Invalid value for thinking: high" },
+      };
+    });
+    const session = createSessionWithConfig({
+      provider: "cursor",
+      thinkingOptionId: "high",
+    });
+    const { internals } = prepareConfiguredOverrideSession(session, {
+      configOptions: [selectConfigOption("thought_level", ["low", "high"], "low")],
+      connection: { setSessionConfigOption },
+    });
+    internals.thinkingOptionId = null;
+
+    await expect(internals.applyConfiguredOverrides()).resolves.toBeUndefined();
+    expect(setSessionConfigOption).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      configId: "thought_level-option",
+      value: "high",
+    });
+  });
+
+  test("does not fail session start when Cursor rejects the fast config option", async () => {
+    const setSessionConfigOption = vi.fn(async () => {
+      throw {
+        code: -32602,
+        message: "Invalid params",
+        data: { message: "Unknown model config option: fast" },
+      };
+    });
+    const session = createSessionWithConfig({
+      provider: "cursor",
+      featureValues: { fast: true },
+      configFeatureOptions: [CURSOR_FAST_FEATURE_OPTION],
+    });
+    const { internals } = prepareConfiguredOverrideSession(session, {
+      configOptions: [cursorFastConfigOption("false")],
+      connection: { setSessionConfigOption },
+    });
+
+    await expect(internals.applyConfiguredOverrides()).resolves.toBeUndefined();
+    expect(setSessionConfigOption).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      configId: "fast",
+      value: "true",
+    });
+  });
+
   test("applies configured Copilot custom agent before the first turn", async () => {
     const setSessionConfigOption = vi.fn(async () => ({
       configOptions: [copilotAgentConfigOption("Probe Agent")],
@@ -2420,6 +2628,58 @@ describe("ACPAgentSession slash commands", () => {
       },
     ]);
   });
+
+  test("keeps available_commands_update that arrives before session/new assigns a session id", async () => {
+    const session = createSessionWithConfig();
+
+    await session.sessionUpdate({
+      sessionId: "session-from-agent",
+      update: {
+        sessionUpdate: "available_commands_update",
+        availableCommands: [
+          {
+            name: "compact",
+            description: "Compress conversation history to save context window",
+            input: { hint: "optional context about what to preserve" },
+          },
+          {
+            name: "context",
+            description: "Show context window usage and session stats",
+          },
+        ],
+      },
+    });
+
+    expect(await session.listCommands()).toEqual([
+      {
+        name: "compact",
+        description: "Compress conversation history to save context window",
+        argumentHint: "optional context about what to preserve",
+        kind: "command",
+      },
+      {
+        name: "context",
+        description: "Show context window usage and session stats",
+        argumentHint: "",
+        kind: "command",
+      },
+    ]);
+  });
+
+  test("ignores available_commands_update for a different session after id is assigned", async () => {
+    const session = createSessionWithConfig();
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+
+    await session.sessionUpdate({
+      sessionId: "other-session",
+      update: {
+        sessionUpdate: "available_commands_update",
+        availableCommands: [{ name: "compact", description: "Compress conversation history" }],
+      },
+    });
+
+    expect(await session.listCommands()).toEqual([]);
+  });
 });
 
 describe("ACPAgentSession", () => {
@@ -2467,6 +2727,18 @@ describe("ACPAgentSession", () => {
     });
     expect(summary.message).not.toContain("[object Object]");
     expect(summary.diagnostic).toContain("Droid process exited unexpectedly");
+  });
+
+  test("summarizes nested JSON-RPC error objects instead of [object Object]", () => {
+    const summary = summarizeACPRequestError({
+      error: {
+        code: -32603,
+        message: "Authentication failed. Run /login to continue.",
+      },
+    });
+
+    expect(summary.message).toBe("Authentication failed. Run /login to continue.");
+    expect(summary.message).not.toContain("[object Object]");
   });
 
   test("accepts ACP extension notifications without failing the JSON-RPC connection", async () => {
@@ -2854,6 +3126,67 @@ describe("ACPAgentSession", () => {
     resolvePrompt({ stopReason: "end_turn" });
   });
 
+  test("startTurn retries session/prompt without fields Cursor ACP rejects", async () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    const prompt = vi.fn(
+      async (params: { sessionId: string; messageId?: string; prompt: unknown }) => {
+        if ("messageId" in params) {
+          throw RequestError.invalidParams({
+            issues: [{ code: "unrecognized_keys", keys: ["messageId"] }],
+          });
+        }
+        return { stopReason: "end_turn" } satisfies PromptResponse;
+      },
+    );
+
+    asInternals<ACPSessionInternals>(session).sessionId = "session-1";
+    asInternals<ACPSessionInternals>(session).connection = { prompt };
+
+    const turnCompleted = new Promise<Extract<AgentStreamEvent, { type: "turn_completed" }>>(
+      (resolve) => {
+        session.subscribe((event) => {
+          events.push(event);
+          if (event.type === "turn_completed") {
+            resolve(event);
+          }
+        });
+      },
+    );
+
+    await session.startTurn("hello", { clientMessageId: "msg-client-1" });
+    await turnCompleted;
+
+    expect(prompt).toHaveBeenNthCalledWith(1, {
+      sessionId: "session-1",
+      messageId: "msg-client-1",
+      prompt: [{ type: "text", text: "hello" }],
+    });
+    expect(prompt).toHaveBeenNthCalledWith(2, {
+      sessionId: "session-1",
+      prompt: [{ type: "text", text: "hello" }],
+    });
+    expect(events.some((event) => event.type === "turn_failed")).toBe(false);
+
+    prompt.mockClear();
+    const secondTurn = new Promise<Extract<AgentStreamEvent, { type: "turn_completed" }>>(
+      (resolve) => {
+        session.subscribe((event) => {
+          if (event.type === "turn_completed") {
+            resolve(event);
+          }
+        });
+      },
+    );
+    await session.startTurn("again", { clientMessageId: "msg-client-2" });
+    await secondTurn;
+    expect(prompt).toHaveBeenCalledTimes(1);
+    expect(prompt).toHaveBeenCalledWith({
+      sessionId: "session-1",
+      prompt: [{ type: "text", text: "again" }],
+    });
+  });
+
   test("startTurn dedupes ACP user echo chunks for the submitted message", async () => {
     const session = createSession();
     const events: AgentStreamEvent[] = [];
@@ -3140,13 +3473,18 @@ describe("ACPAgentSession", () => {
     });
 
     const { turnId } = await session.startTurn("hello");
+    const turnFailed = new Promise<Extract<AgentStreamEvent, { type: "turn_failed" }>>(
+      (resolve) => {
+        session.subscribe((event) => {
+          if (event.type === "turn_failed") {
+            resolve(event);
+          }
+        });
+      },
+    );
 
     rejectPrompt(new Error("prompt failed"));
-    await Promise.resolve();
-    await Promise.resolve();
-
-    const turnFailedEvent = events.find((event) => event.type === "turn_failed");
-    expect(turnFailedEvent).toMatchObject({
+    await expect(turnFailed).resolves.toMatchObject({
       type: "turn_failed",
       turnId,
       error: "prompt failed",
@@ -3180,9 +3518,17 @@ describe("ACPAgentSession", () => {
       } as SessionUpdate,
     });
 
+    const turnFailed = new Promise<Extract<AgentStreamEvent, { type: "turn_failed" }>>(
+      (resolve) => {
+        session.subscribe((event) => {
+          if (event.type === "turn_failed") {
+            resolve(event);
+          }
+        });
+      },
+    );
     rejectPrompt(new Error("prompt failed"));
-    await Promise.resolve();
-    await Promise.resolve();
+    await turnFailed;
 
     expect(
       events.filter((event) => event.type === "timeline" || event.type === "turn_failed"),

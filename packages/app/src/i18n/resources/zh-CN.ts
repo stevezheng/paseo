@@ -2203,6 +2203,8 @@ export const zhCN: TranslationResources = {
         jumpToWorkspace: "跳转到 workspace",
         jumpToTab: "跳转到标签",
         previousWorkspace: "上一个 workspace",
+        previousPrompt: "上一个问题",
+        nextPrompt: "下一个问题",
         nextWorkspace: "下一个 workspace",
         previousTab: "上一个标签",
         nextTab: "下一个标签",

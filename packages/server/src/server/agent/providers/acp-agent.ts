@@ -119,11 +119,13 @@ import {
   createStringCommandShellEnvOverlay,
 } from "../../../utils/string-command-shell.js";
 import { spawnProcess } from "../../../utils/spawn.js";
+import { getErrorMessage } from "@getpaseo/protocol/error-utils";
 import {
   type DiagnosticEntry,
   toDiagnosticErrorMessage,
   truncateForDiagnostic,
 } from "./diagnostic-utils.js";
+import { callAcpWithParamCompat } from "./acp-request-compat.js";
 import { withTimeout } from "../../../utils/promise-timeout.js";
 
 const ACP_AUTO_ACCEPT_FEATURE_ID = "auto_accept";
@@ -178,16 +180,16 @@ export function summarizeACPRequestError(error: unknown): {
     };
   }
 
-  if (error instanceof Error) {
-    return { message: error.message };
-  }
-
-  return { message: String(error) };
+  return { message: getErrorMessage(error) };
 }
 
 function toACPRequestError(error: unknown): Error {
   if (!isACPError(error)) {
-    return error instanceof Error ? error : new Error(String(error));
+    if (error instanceof Error) {
+      const message = getErrorMessage(error);
+      return message === error.message ? error : new Error(message, { cause: error });
+    }
+    return new Error(getErrorMessage(error));
   }
 
   const summary = summarizeACPRequestError(error);
@@ -1687,6 +1689,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private historyPending = false;
   private replayingHistory = false;
   private bootstrapThreadEventPending = false;
+  private readonly omittedAcpParamKeys = new Set<string>();
   private readonly terminateProcess: ProcessTerminator;
 
   constructor(config: AgentSessionConfig, options: ACPAgentSessionOptions) {
@@ -1734,7 +1737,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       this.agentCapabilities = spawned.initialize.agentCapabilities ?? null;
 
       const response = await this.runACPRequest(() =>
-        this.connection!.newSession({
+        this.callAcpWithParamCompat((params) => this.connection!.newSession(params), {
           cwd: this.config.cwd,
           mcpServers: this.acpMcpServers(),
         }),
@@ -1773,7 +1776,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       if (this.agentCapabilities?.loadSession) {
         this.replayingHistory = true;
         const response = await this.runACPRequest(() =>
-          this.connection!.loadSession({
+          this.callAcpWithParamCompat((params) => this.connection!.loadSession(params), {
             sessionId: handle.sessionId,
             cwd: this.config.cwd,
             mcpServers: this.acpMcpServers(),
@@ -1855,12 +1858,11 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.pushEvent({ type: "turn_started", provider: this.provider, turnId });
     this.emitSubmittedUserMessage(prompt, messageId, turnId, options?.clientMessageId);
 
-    void this.connection
-      .prompt({
-        sessionId: this.sessionId,
-        messageId,
-        prompt: toACPContentBlocks(prompt),
-      })
+    void this.callAcpWithParamCompat((params) => this.connection!.prompt(params), {
+      sessionId: this.sessionId,
+      messageId,
+      prompt: toACPContentBlocks(prompt),
+    })
       .then((response) => {
         this.handlePromptResponse(response, turnId);
         return;
@@ -2238,6 +2240,18 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     if (!option) {
       throw new Error(`${this.provider} does not expose ACP thought-level selection`);
     }
+    const choice = findSelectConfigChoice({ option, value: thinkingOptionId });
+    if (!choice) {
+      this.warnInvalidSelection(
+        thinkingOptionId,
+        `is not a valid ${this.provider} thought-level option. Available options: ${flattenSelectOptions(
+          option.options,
+        )
+          .map((entry) => entry.value)
+          .join(", ")}`,
+      );
+      return;
+    }
     const response = await this.connection.setSessionConfigOption({
       sessionId: this.sessionId,
       configId: option.id,
@@ -2511,7 +2525,10 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       },
       "provider.acp.raw_event",
     );
-    if (params.sessionId !== this.sessionId) {
+    // Agents such as Grok publish available_commands_update while session/new
+    // is still in flight. sessionId is assigned from that response, so a
+    // strict match here dropped the only command batch draft listing sees.
+    if (this.sessionId !== null && params.sessionId !== this.sessionId) {
       return;
     }
 
@@ -2750,7 +2767,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     this.child = child;
     this.connection = connection;
     const initialize = await this.runACPRequest(() =>
-      connection.initialize({
+      this.callAcpWithParamCompat((params) => connection.initialize(params), {
         protocolVersion: PROTOCOL_VERSION,
         clientCapabilities: buildACPClientCapabilities(
           this.clientCapabilityMeta,
@@ -2769,6 +2786,18 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     } catch (error) {
       throw toACPRequestError(error);
     }
+  }
+
+  private callAcpWithParamCompat<TParams extends Record<string, unknown>, TResult>(
+    send: (params: TParams) => Promise<TResult>,
+    params: TParams,
+  ): Promise<TResult> {
+    return callAcpWithParamCompat(send, params, this.omittedAcpParamKeys, (keys) => {
+      this.logger.warn(
+        { provider: this.provider, keys },
+        "ACP agent rejected unsupported request params; retrying without them",
+      );
+    });
   }
 
   private acpMcpServers(): McpServer[] {
@@ -2822,6 +2851,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       });
       try {
         await this.setModelWithSelection({ modelId: configuredModelId, selection });
+        await this.refreshConfigOptionsAfterModelChange();
       } catch (error) {
         if (!this.isModelSelectionUnavailableError(error)) {
           throw error;
@@ -2833,14 +2863,34 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       }
     }
     if (this.config.thinkingOptionId && this.config.thinkingOptionId !== this.thinkingOptionId) {
-      await this.setThinkingOption(this.config.thinkingOptionId);
+      try {
+        await this.setThinkingOption(this.config.thinkingOptionId);
+      } catch (error) {
+        if (!this.isIgnorableSessionConfigError(error)) {
+          throw error;
+        }
+        this.logger.warn(
+          { value: this.config.thinkingOptionId },
+          `${this.provider} does not expose ACP thought-level selection; using provider default thinking`,
+        );
+      }
     }
     const configuredFeatureValues = this.config.featureValues ?? {};
     for (const featureOption of this.configFeatureOptions) {
       if (!Object.prototype.hasOwnProperty.call(configuredFeatureValues, featureOption.id)) {
         continue;
       }
-      await this.setFeature(featureOption.id, configuredFeatureValues[featureOption.id]);
+      try {
+        await this.setFeature(featureOption.id, configuredFeatureValues[featureOption.id]);
+      } catch (error) {
+        if (!this.isIgnorableSessionConfigError(error)) {
+          throw error;
+        }
+        this.logger.warn(
+          { featureId: featureOption.id, error: toDiagnosticErrorMessage(error) },
+          `${this.provider} could not apply ACP feature '${featureOption.id}'`,
+        );
+      }
     }
   }
 
@@ -2854,6 +2904,62 @@ export class ACPAgentSession implements AgentSession, ACPClient {
 
   private isModelSelectionUnavailableError(error: unknown): boolean {
     return error instanceof Error && error.message === this.modelSelectionUnavailableMessage();
+  }
+
+  private isIgnorableSessionConfigError(error: unknown): boolean {
+    const message = summarizeACPRequestError(error).message;
+    return (
+      message === `${this.provider} does not expose ACP thought-level selection` ||
+      message.includes("Unknown model config option:") ||
+      /Invalid value for thinking\b/i.test(message) ||
+      message.includes(`does not expose ACP feature '`) ||
+      /does not include option '/.test(message)
+    );
+  }
+
+  private findConfigRefreshSelectOption(): SelectConfigOption | null {
+    const options = this.configOptions ?? [];
+    const preferred = options.find(
+      (entry): entry is SelectConfigOption => entry.type === "select" && entry.id === "fast",
+    );
+    if (preferred) {
+      return preferred;
+    }
+    return (
+      options.find(
+        (entry): entry is SelectConfigOption =>
+          entry.type === "select" &&
+          entry.category !== "thought_level" &&
+          entry.category !== "model",
+      ) ?? null
+    );
+  }
+
+  private async refreshConfigOptionsAfterModelChange(): Promise<void> {
+    if (!this.connection || !this.sessionId) {
+      return;
+    }
+    const option = this.findConfigRefreshSelectOption();
+    if (!option) {
+      return;
+    }
+    try {
+      const response = await this.runACPRequest(() =>
+        this.connection!.setSessionConfigOption({
+          sessionId: this.sessionId!,
+          configId: option.id,
+          value: option.currentValue,
+        }),
+      );
+      this.configOptions = this.transformConfigOptions(response.configOptions ?? []);
+      this.thinkingOptionId =
+        deriveCurrentConfigValue(this.configOptions, "thought_level") ?? this.thinkingOptionId;
+    } catch (error) {
+      this.logger.warn(
+        { error: toDiagnosticErrorMessage(error) },
+        `${this.provider} could not refresh ACP config options after a model change`,
+      );
+    }
   }
 
   private translateSessionUpdate(update: SessionUpdate): AgentStreamEvent[] {
@@ -2910,12 +3016,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
         this.handleUsageUpdate(update);
         return pendingUserEvents;
       case "available_commands_update":
-        this.cachedCommands = update.availableCommands.map((command) => ({
-          name: command.name,
-          description: command.description,
-          argumentHint: "",
-          kind: "command",
-        }));
+        this.cachedCommands = update.availableCommands.map(mapACPAvailableCommand);
         this.settleCommandsReady();
         return pendingUserEvents;
       default:
@@ -3322,6 +3423,9 @@ function normalizeConfigFeatureValue(value: unknown): string {
   if (typeof value === "string") {
     return value;
   }
+  if (typeof value === "boolean") {
+    return value ? "true" : "false";
+  }
   if (value === null) {
     return "";
   }
@@ -3493,6 +3597,20 @@ function mergeToolSnapshot(
     locations: coalesceDefined(update.locations, previous?.locations, null),
     rawInput: update.rawInput !== undefined ? update.rawInput : previous?.rawInput,
     rawOutput: update.rawOutput !== undefined ? update.rawOutput : previous?.rawOutput,
+  };
+}
+
+type ACPAvailableCommand = Extract<
+  SessionUpdate,
+  { sessionUpdate: "available_commands_update" }
+>["availableCommands"][number];
+
+function mapACPAvailableCommand(command: ACPAvailableCommand): AgentSlashCommand {
+  return {
+    name: command.name,
+    description: command.description,
+    argumentHint: command.input?.hint ?? "",
+    kind: "command",
   };
 }
 

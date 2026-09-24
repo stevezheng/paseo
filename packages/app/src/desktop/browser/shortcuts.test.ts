@@ -212,6 +212,28 @@ describe("buildBrowserKeyboardPolicy", () => {
     });
   });
 
+  it("leaves Cmd+F and Cmd+Shift+F in the browser guest", () => {
+    const bindings = buildEffectiveBindings({});
+    const policy = buildBrowserKeyboardPolicy({ bindings, isMac: true, isDesktop: true });
+
+    expect(policy.prefixes).not.toContainEqual({
+      alt: false,
+      code: "KeyF",
+      control: false,
+      key: "f",
+      meta: true,
+      shift: false,
+    });
+    expect(policy.prefixes).not.toContainEqual({
+      alt: false,
+      code: "KeyF",
+      control: false,
+      key: "f",
+      meta: true,
+      shift: true,
+    });
+  });
+
   it("publishes Cmd+B with its logical key for non-QWERTY layouts", () => {
     const bindings = buildEffectiveBindings({});
     const policy = buildBrowserKeyboardPolicy({ bindings, isMac: true, isDesktop: true });

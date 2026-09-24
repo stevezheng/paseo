@@ -223,8 +223,8 @@ describe("keyboard-shortcuts", () => {
       payload: { delta: 1 },
     },
     {
-      name: "matches Ctrl+Alt+Up to jump to the previous prompt on mac desktop",
-      event: { key: "ArrowUp", code: "ArrowUp", ctrlKey: true, altKey: true },
+      name: "matches Cmd+F to jump to the previous prompt on mac desktop",
+      event: { key: "f", code: "KeyF", metaKey: true },
       context: { isMac: true, isDesktop: true },
       action: "agent.prompt.previous",
     },
@@ -235,8 +235,8 @@ describe("keyboard-shortcuts", () => {
       action: "agent.prompt.previous",
     },
     {
-      name: "matches Ctrl+Alt+Down to jump to the next prompt on mac desktop",
-      event: { key: "ArrowDown", code: "ArrowDown", ctrlKey: true, altKey: true },
+      name: "matches Cmd+Shift+F to jump to the next prompt on mac desktop",
+      event: { key: "F", code: "KeyF", metaKey: true, shiftKey: true },
       context: { isMac: true, isDesktop: true },
       action: "agent.prompt.next",
     },
@@ -454,6 +454,12 @@ describe("keyboard-shortcuts", () => {
       context: { isMac: true, isDesktop: false },
       action: "workspace.tab.close.current",
     },
+    {
+      name: "matches Cmd+Shift+U to toggle focus mode on mac",
+      event: { key: "U", code: "KeyU", metaKey: true, shiftKey: true },
+      context: { isMac: true, isDesktop: true },
+      action: "view.toggle.focus",
+    },
   ];
 
   it.each(matchingCases)(
@@ -576,6 +582,16 @@ describe("keyboard-shortcuts", () => {
       name: "does not interrupt agent when terminal is focused",
       event: { key: "Escape", code: "Escape" },
       context: { focusScope: "terminal" },
+    },
+    {
+      name: "does not jump prompts with Cmd+F while the browser pane is focused",
+      event: { key: "f", code: "KeyF", metaKey: true },
+      context: { isMac: true, isDesktop: true, focusScope: "browser" },
+    },
+    {
+      name: "does not jump prompts with Cmd+F while the terminal is focused",
+      event: { key: "f", code: "KeyF", metaKey: true },
+      context: { isMac: true, isDesktop: true, focusScope: "terminal" },
     },
     {
       name: "does not interrupt agent when command center is open",
@@ -742,6 +758,9 @@ describe("keyboard-shortcut help sections", () => {
         "increase-thinking": ["ctrl", "."],
         "previous-favorite-model": ["ctrl", "shift", ","],
         "next-favorite-model": ["ctrl", "shift", "."],
+        "agent-prompt-previous": ["mod", "F"],
+        "agent-prompt-next": ["mod", "shift", "F"],
+        "toggle-focus": ["mod", "shift", "U"],
       },
     },
     {

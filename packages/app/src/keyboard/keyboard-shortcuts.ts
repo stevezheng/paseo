@@ -728,11 +728,18 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   },
 
   // --- Prompt navigation ---
+  // Browser is omitted so Cmd+F stays find-in-page there.
   {
-    id: "agent-prompt-previous-cmd-alt-up-mac",
+    id: "agent-prompt-previous-cmd-f-mac",
     action: "agent.prompt.previous",
-    combo: "Ctrl+Alt+ArrowUp",
-    when: { mac: true, desktop: true, commandCenter: false, terminal: false },
+    combo: "Cmd+F",
+    when: {
+      mac: true,
+      desktop: true,
+      commandCenter: false,
+      terminal: false,
+      focusScope: ["message-input", "editable", "other"],
+    },
     help: {
       id: "agent-prompt-previous",
       section: "agent-input",
@@ -751,10 +758,16 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
     },
   },
   {
-    id: "agent-prompt-next-ctrl-alt-down-mac",
+    id: "agent-prompt-next-cmd-shift-f-mac",
     action: "agent.prompt.next",
-    combo: "Ctrl+Alt+ArrowDown",
-    when: { mac: true, desktop: true, commandCenter: false, terminal: false },
+    combo: "Cmd+Shift+F",
+    when: {
+      mac: true,
+      desktop: true,
+      commandCenter: false,
+      terminal: false,
+      focusScope: ["message-input", "editable", "other"],
+    },
     help: {
       id: "agent-prompt-next",
       section: "agent-input",
@@ -1144,9 +1157,9 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
 
   // --- Focus mode ---
   {
-    id: "view-toggle-focus-cmd-shift-f-mac",
+    id: "view-toggle-focus-cmd-shift-u-mac",
     action: "view.toggle.focus",
-    combo: "Cmd+Shift+F",
+    combo: "Cmd+Shift+U",
     when: { mac: true, commandCenter: false },
     help: {
       id: "toggle-focus",

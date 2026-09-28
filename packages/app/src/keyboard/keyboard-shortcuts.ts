@@ -174,7 +174,6 @@ export const SHORTCUT_HELP_ROW_ORDER: Record<ShortcutSectionId, readonly string[
     "workspace-tab-new",
     "workspace-tab-target-agent",
     "workspace-terminal-new",
-    "workspace-tab-target-browser",
     "workspace-tab-target-changes",
     "workspace-tab-target-files",
     "workspace-tab-close-current",
@@ -218,7 +217,6 @@ const SHORTCUT_HELP_LABEL_KEYS: Record<string, string> = {
   "archive-workspace": "settings.shortcuts.help.archiveWorkspace",
   "workspace-tab-new": "settings.shortcuts.help.newTab",
   "workspace-tab-target-agent": "workspace.tabs.actions.newAgent",
-  "workspace-tab-target-browser": "workspace.tabs.actions.newBrowser",
   "workspace-tab-target-changes": "workspace.tabs.actions.changes",
   "workspace-tab-target-files": "workspace.tabs.actions.files",
   "workspace-tab-close-current": "settings.shortcuts.help.closeCurrentTab",
@@ -442,28 +440,6 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
       id: "workspace-tab-target-agent",
       section: "tabs-panes",
       label: "New agent",
-    },
-  },
-  {
-    id: "workspace-tab-target-browser-cmd-shift-b-mac",
-    action: "workspace.tab.target.browser",
-    combo: "Cmd+Shift+B",
-    when: { mac: true, commandCenter: false },
-    help: {
-      id: "workspace-tab-target-browser",
-      section: "tabs-panes",
-      label: "New browser",
-    },
-  },
-  {
-    id: "workspace-tab-target-browser-ctrl-shift-b-non-mac",
-    action: "workspace.tab.target.browser",
-    combo: "Ctrl+Shift+B",
-    when: { mac: false, commandCenter: false, terminal: false },
-    help: {
-      id: "workspace-tab-target-browser",
-      section: "tabs-panes",
-      label: "New browser",
     },
   },
   {
@@ -729,11 +705,10 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   },
 
   // --- Prompt navigation ---
-  // Browser is omitted so Cmd+F stays find-in-page there.
   {
     id: "agent-prompt-previous-cmd-f-mac",
     action: "agent.prompt.previous",
-    combo: "Cmd+F",
+    combo: "Cmd+ArrowUp",
     when: {
       mac: true,
       desktop: true,
@@ -761,7 +736,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   {
     id: "agent-prompt-next-cmd-shift-f-mac",
     action: "agent.prompt.next",
-    combo: "Cmd+Shift+F",
+    combo: "Cmd+ArrowDown",
     when: {
       mac: true,
       desktop: true,
@@ -1026,7 +1001,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   {
     id: "sidebar-toggle-right-cmd-e-mac",
     action: "sidebar.toggle.right",
-    combo: "Cmd+E",
+    combo: "Cmd+Shift+B",
     when: { mac: true, commandCenter: false },
     help: {
       id: "toggle-right-sidebar",
@@ -1037,7 +1012,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   {
     id: "sidebar-toggle-right-ctrl-e-non-mac",
     action: "sidebar.toggle.right",
-    combo: "Ctrl+E",
+    combo: "Ctrl+Shift+B",
     when: { mac: false, commandCenter: false, terminal: false },
     help: {
       id: "toggle-right-sidebar",

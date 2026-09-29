@@ -469,7 +469,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   {
     id: "workspace-tab-target-files-cmd-shift-e-mac",
     action: "workspace.tab.target.files",
-    combo: "Cmd+Shift+E",
+    combo: "Cmd+Alt+E",
     when: { mac: true, commandCenter: false },
     help: {
       id: "workspace-tab-target-files",
@@ -705,10 +705,11 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   },
 
   // --- Prompt navigation ---
+  // Keep binding ids stable so saved custom shortcuts survive default changes.
   {
     id: "agent-prompt-previous-cmd-f-mac",
     action: "agent.prompt.previous",
-    combo: "Cmd+ArrowUp",
+    combo: "Cmd+E",
     when: {
       mac: true,
       desktop: true,
@@ -736,7 +737,7 @@ const SHORTCUT_BINDINGS: readonly ShortcutBinding[] = [
   {
     id: "agent-prompt-next-cmd-shift-f-mac",
     action: "agent.prompt.next",
-    combo: "Cmd+ArrowDown",
+    combo: "Cmd+Shift+E",
     when: {
       mac: true,
       desktop: true,

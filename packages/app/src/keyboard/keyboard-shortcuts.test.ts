@@ -223,8 +223,8 @@ describe("keyboard-shortcuts", () => {
       payload: { delta: 1 },
     },
     {
-      name: "matches Cmd+Up to jump to the previous prompt on mac desktop",
-      event: { key: "ArrowUp", code: "ArrowUp", metaKey: true },
+      name: "matches Cmd+E to jump to the previous prompt on mac desktop",
+      event: { key: "e", code: "KeyE", metaKey: true },
       context: { isMac: true, isDesktop: true },
       action: "agent.prompt.previous",
     },
@@ -235,10 +235,22 @@ describe("keyboard-shortcuts", () => {
       action: "agent.prompt.previous",
     },
     {
-      name: "matches Cmd+Down to jump to the next prompt on mac desktop",
-      event: { key: "ArrowDown", code: "ArrowDown", metaKey: true },
+      name: "matches Cmd+Shift+E to jump to the next prompt on mac desktop",
+      event: { key: "E", code: "KeyE", metaKey: true, shiftKey: true },
       context: { isMac: true, isDesktop: true },
       action: "agent.prompt.next",
+    },
+    {
+      name: "jumps to the next prompt from the message input instead of opening Files",
+      event: { key: "E", code: "KeyE", metaKey: true, shiftKey: true },
+      context: { isMac: true, isDesktop: true, focusScope: "message-input" },
+      action: "agent.prompt.next",
+    },
+    {
+      name: "opens Files with Cmd+Alt+E when Option produces a dead key",
+      event: { key: "Dead", code: "KeyE", metaKey: true, altKey: true },
+      context: { isMac: true, isDesktop: true },
+      action: "workspace.tab.target.files",
     },
     {
       name: "matches Ctrl+Alt+Down to jump to the next prompt on non-mac desktop",
@@ -824,8 +836,9 @@ describe("keyboard-shortcut help sections", () => {
         "increase-thinking": ["ctrl", "."],
         "previous-favorite-model": ["ctrl", "shift", ","],
         "next-favorite-model": ["ctrl", "shift", "."],
-        "agent-prompt-previous": ["mod", "ArrowUp"],
-        "agent-prompt-next": ["mod", "ArrowDown"],
+        "agent-prompt-previous": ["mod", "E"],
+        "agent-prompt-next": ["mod", "shift", "E"],
+        "workspace-tab-target-files": ["mod", "alt", "E"],
         "toggle-focus": ["mod", "shift", "U"],
       },
     },
@@ -1349,14 +1362,17 @@ describe("direct new-tab target shortcuts", () => {
     expect(result.match?.action).toBe(action);
   });
 
-  it.each(targetCases)("routes Cmd+Shift+%s directly to %s", (key, code, action) => {
-    const result = resolveShortcut({
-      event: { key, code, metaKey: true, shiftKey: true },
-      context: { isMac: true, isDesktop: true, focusScope: "other" },
-      bindings: buildEffectiveBindings({}),
-    });
-    expect(result.match?.action).toBe(action);
-  });
+  it.each(targetCases)(
+    "routes the default Mac shortcut for %s directly to %s",
+    (key, code, action) => {
+      const result = resolveShortcut({
+        event: { key, code, metaKey: true, shiftKey: key !== "e", altKey: key === "e" },
+        context: { isMac: true, isDesktop: true, focusScope: "other" },
+        bindings: buildEffectiveBindings({}),
+      });
+      expect(result.match?.action).toBe(action);
+    },
+  );
 
   it("uses the existing override map for target matching and display", () => {
     const bindingId = "workspace-tab-target-agent-ctrl-shift-a-non-mac";

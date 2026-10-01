@@ -8,25 +8,26 @@ import { createTestLogger } from "../../../test-utils/test-logger.js";
 import { GenericACPAgentClient } from "./generic-acp-agent.js";
 
 describe("GenericACPAgentClient slash commands", () => {
-  test("lists commands an agent advertises right after session/new", async () => {
-    await withFakeACPAgent("commands-after-session-new", async (command, cwd) => {
-      const client = new GenericACPAgentClient({
-        logger: createTestLogger(),
-        command,
-        // Long enough that the update always lands inside the wait, however slowly
-        // the fake agent is scheduled.
-        initialCommandsWaitTimeoutMs: 60_000,
+  test.each(["commands-before-session-new", "commands-after-session-new"] as const)(
+    "lists %s",
+    async (mode) => {
+      await withFakeACPAgent(mode, async (command, cwd) => {
+        const client = new GenericACPAgentClient({
+          logger: createTestLogger(),
+          command,
+          initialCommandsWaitTimeoutMs: 1_500,
+        });
+        const session = await client.createSession({ provider: "acp", cwd });
+        try {
+          await expect(session.listCommands?.()).resolves.toEqual([
+            { name: "review", description: "Review the diff", argumentHint: "", kind: "command" },
+          ]);
+        } finally {
+          await session.close();
+        }
       });
-      const session = await client.createSession({ provider: "acp", cwd });
-      try {
-        await expect(session.listCommands?.()).resolves.toEqual([
-          { name: "review", description: "Review the diff", argumentHint: "", kind: "command" },
-        ]);
-      } finally {
-        await session.close();
-      }
-    });
-  });
+    },
+  );
 
   test("answers with no commands for an agent that never advertises any", async () => {
     await withFakeACPAgent("silent", async (command, cwd) => {
@@ -46,7 +47,7 @@ describe("GenericACPAgentClient slash commands", () => {
 });
 
 async function withFakeACPAgent(
-  mode: "commands-after-session-new" | "silent",
+  mode: "commands-before-session-new" | "commands-after-session-new" | "silent",
   run: (command: [string, ...string[]], cwd: string) => Promise<void>,
 ): Promise<void> {
   const testDir = await mkdtemp(path.join(tmpdir(), "paseo-acp-commands-"));
@@ -83,20 +84,27 @@ rl.on("line", (line) => {
   }
 
   if (message.method === "session/new") {
-    write({ id: message.id, result: { sessionId: "session-1" } });
-    if (mode === "commands-after-session-new") {
-      setTimeout(() => {
-        write({
-          method: "session/update",
-          params: {
-            sessionId: "session-1",
-            update: {
-              sessionUpdate: "available_commands_update",
-              availableCommands: [{ name: "review", description: "Review the diff" }],
+    if (mode !== "silent") {
+      const messages = [
+          { id: message.id, result: { sessionId: "session-1" } },
+          {
+            method: "session/update",
+            params: {
+              sessionId: "session-1",
+              update: {
+                sessionUpdate: "available_commands_update",
+                availableCommands: [{ name: "review", description: "Review the diff" }],
+              },
             },
           },
-        });
-      }, 0);
+        ];
+      if (mode === "commands-before-session-new") messages.reverse();
+      process.stdout.write(
+        messages.map((entry) => JSON.stringify({ jsonrpc: "2.0", ...entry }) + "\\n")
+          .join(""),
+      );
+    } else {
+      write({ id: message.id, result: { sessionId: "session-1" } });
     }
     return;
   }

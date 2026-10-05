@@ -19,6 +19,7 @@ interface ContextWindowMeterProps {
   usedTokens: number | null;
   totalCostUsd?: number | null;
   outputTokensPerSecond?: number | null;
+  outputTokensPerSecondEstimated?: boolean;
   showPercentage?: boolean;
   /** Optional glyph envelope for icon-toolbar alignment. */
   glyphSize?: number;
@@ -149,6 +150,7 @@ export function ContextWindowMeter({
   usedTokens,
   totalCostUsd,
   outputTokensPerSecond = null,
+  outputTokensPerSecondEstimated = false,
   showPercentage = false,
   glyphSize,
 }: ContextWindowMeterProps) {
@@ -220,6 +222,7 @@ export function ContextWindowMeter({
             context={context}
             sessionCost={formattedSessionCost}
             outputTokensPerSecond={outputTokensPerSecond}
+            outputTokensPerSecondEstimated={outputTokensPerSecondEstimated}
             showTitle={false}
             refreshable
           />
@@ -262,6 +265,7 @@ export function ContextWindowMeter({
             context={context}
             sessionCost={formattedSessionCost}
             outputTokensPerSecond={outputTokensPerSecond}
+            outputTokensPerSecondEstimated={outputTokensPerSecondEstimated}
             showTitle
             refreshable={false}
           />
@@ -297,6 +301,7 @@ export function ContextWindowMeter({
           context={context}
           sessionCost={formattedSessionCost}
           outputTokensPerSecond={outputTokensPerSecond}
+          outputTokensPerSecondEstimated={outputTokensPerSecondEstimated}
           showTitle
           refreshable
         />

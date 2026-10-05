@@ -218,6 +218,7 @@ export interface AgentUsage {
   cachedInputTokens?: number;
   outputTokens?: number;
   outputTokensPerSecond?: number;
+  outputTokensPerSecondEstimated?: boolean;
   totalCostUsd?: number;
   contextWindowMaxTokens?: number;
   contextWindowUsedTokens?: number;

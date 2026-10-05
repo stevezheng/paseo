@@ -6370,7 +6370,9 @@ describe("Codex app-server provider", () => {
       notify(121000, "item/completed", { item: { id: "hidden", type: "reasoning", summary: [] } });
       delta(122000, "visible");
       end(123000, "visible");
-      expect(usage(500)).not.toHaveProperty("usage.outputTokensPerSecond");
+      expect(usage(500)).toMatchObject({
+        usage: { outputTokensPerSecond: 250, outputTokensPerSecondEstimated: true },
+      });
 
       delta(130000, "interrupted");
       notify(131000, "turn/completed", { turn: { status: "interrupted", error: null } });

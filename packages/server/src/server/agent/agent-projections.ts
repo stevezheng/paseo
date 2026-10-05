@@ -441,7 +441,7 @@ function sanitizeMetadataArray(value: unknown): AgentMetadata[] | undefined {
   return sanitized.length > 0 ? sanitized : undefined;
 }
 
-type UsageNumericField = Exclude<keyof AgentUsage, never>;
+type UsageNumericField = Exclude<keyof AgentUsage, "outputTokensPerSecondEstimated">;
 
 function assignFiniteNumber(
   source: { [key: string]: JsonValue },
@@ -466,6 +466,7 @@ function sanitizeUsage(value: unknown): AgentUsage | undefined {
     "inputTokens",
     "cachedInputTokens",
     "outputTokens",
+    "outputTokensPerSecond",
     "totalCostUsd",
     "contextWindowMaxTokens",
     "contextWindowUsedTokens",
@@ -474,6 +475,9 @@ function sanitizeUsage(value: unknown): AgentUsage | undefined {
     if (!assignFiniteNumber(sanitized, result, field)) {
       return undefined;
     }
+  }
+  if (typeof sanitized.outputTokensPerSecondEstimated === "boolean") {
+    result.outputTokensPerSecondEstimated = sanitized.outputTokensPerSecondEstimated;
   }
   return Object.keys(result).length ? result : undefined;
 }

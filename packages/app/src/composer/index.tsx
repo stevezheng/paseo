@@ -269,12 +269,14 @@ function buildRealtimeVoiceButtonStyle(
 function buildAgentStateSelector(serverId: string, agentId: string) {
   return (state: ReturnType<typeof useSessionStore.getState>) => {
     const agent = state.sessions[serverId]?.agents?.get(agentId) ?? null;
+    const usage = agent?.lastUsage;
     return {
       status: agent?.status ?? null,
-      contextWindowMaxTokens: agent?.lastUsage?.contextWindowMaxTokens ?? null,
-      contextWindowUsedTokens: agent?.lastUsage?.contextWindowUsedTokens ?? null,
-      totalCostUsd: agent?.lastUsage?.totalCostUsd ?? null,
-      outputTokensPerSecond: agent?.lastUsage?.outputTokensPerSecond ?? null,
+      contextWindowMaxTokens: usage?.contextWindowMaxTokens ?? null,
+      contextWindowUsedTokens: usage?.contextWindowUsedTokens ?? null,
+      totalCostUsd: usage?.totalCostUsd ?? null,
+      outputTokensPerSecond: usage?.outputTokensPerSecond ?? null,
+      outputTokensPerSecondEstimated: usage?.outputTokensPerSecondEstimated ?? false,
       model: agent?.model ?? null,
     };
   };
@@ -2039,6 +2041,7 @@ function ComposerContentImpl({
             usedTokens={agentState.contextWindowUsedTokens}
             totalCostUsd={agentState.totalCostUsd}
             outputTokensPerSecond={agentState.outputTokensPerSecond}
+            outputTokensPerSecondEstimated={agentState.outputTokensPerSecondEstimated}
             glyphSize={contextWindowMeterGlyphSize}
           />
         </View>
@@ -2051,6 +2054,7 @@ function ComposerContentImpl({
       agentState.contextWindowUsedTokens,
       agentState.totalCostUsd,
       agentState.outputTokensPerSecond,
+      agentState.outputTokensPerSecondEstimated,
       contextWindowMeterGlyphSize,
     ],
   );

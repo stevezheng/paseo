@@ -566,6 +566,34 @@ interface UsageListReportsPayload {
   requestId: string;
   reports: UsageReportEntry[];
 }
+// COMPAT(batch-usage): added in v0.11.0, remove after 2027-04-05.
+function appendBatchUsageReports(
+  batch: Extract<
+    SessionOutboundMessage,
+    { type: "usage.list_reports.response" }
+  >["payload"]["reports"],
+  reports: UsageReportEntry[],
+  onReport?: (report: UsageReportEntry) => void,
+): void {
+  for (const entry of batch ?? []) {
+    if (reports.some((report) => report.id === entry.id)) continue;
+    let report: UsageReportEntry["report"];
+    if (entry.report.status === "available") {
+      report = { ...entry.report, status: "available" };
+    } else if (entry.report.status === "error") {
+      report = { status: "error", error: entry.report.error ?? "" };
+    } else {
+      report = {
+        status: "unavailable",
+        problem: entry.report.problem ?? { kind: "no_quota", detail: entry.report.error ?? "" },
+      };
+    }
+    const normalized = { ...entry, report };
+    reports.push(normalized);
+    onReport?.(normalized);
+  }
+}
+
 type DaemonStatusPayload = DaemonGetStatusResponse["payload"];
 type DaemonPairingOfferPayload = DaemonGetPairingOfferResponse["payload"];
 type DiagnosticsPayload = DiagnosticsResponse["payload"];
@@ -5355,7 +5383,8 @@ export class DaemonClient {
             ? message.payload
             : null,
       });
-      if (response.error !== null) throw new Error(response.error);
+      if (response.error != null) throw new Error(response.error);
+      appendBatchUsageReports(response.reports, reports, onReport);
       return { requestId, reports };
     } finally {
       active = false;

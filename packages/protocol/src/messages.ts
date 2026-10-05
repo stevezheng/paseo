@@ -6297,7 +6297,26 @@ export const UsageListReportsUpdateMessageSchema = z.object({
 });
 export const UsageListReportsResponseMessageSchema = z.object({
   type: z.literal("usage.list_reports.response"),
-  payload: z.object({ requestId: z.string(), error: z.string().nullable() }),
+  // COMPAT(batch-usage): added in v0.11.0, remove after 2027-04-05.
+  payload: z.object({
+    requestId: z.string(),
+    error: z.string().nullable().optional(),
+    reports: z
+      .array(
+        UsageReportEntrySchema.extend({
+          report: z.object({
+            status: ProviderUsageStatusSchema,
+            planLabel: z.string().optional(),
+            windows: z.array(ProviderUsageWindowSchema),
+            balances: z.array(ProviderUsageBalanceSchema).optional(),
+            details: z.array(ProviderUsageDetailSchema).optional(),
+            error: z.string().optional(),
+            problem: UsageProblemSchema.optional(),
+          }),
+        }),
+      )
+      .optional(),
+  }),
 });
 
 const AgentSlashCommandSchema = z.object({

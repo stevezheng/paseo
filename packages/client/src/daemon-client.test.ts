@@ -7193,7 +7193,7 @@ test.each([
   expect(supportsUsageReports(features)).toBe(expected);
 });
 
-test("uses modern usage RPC when both capabilities are advertised", async () => {
+test.each([false, true])("uses modern usage RPC with terminal batch: %s", async (includeBatch) => {
   const mock = createMockTransport();
   const client = new DaemonClient({
     url: "ws://test",
@@ -7252,7 +7252,11 @@ test("uses modern usage RPC when both capabilities are advertised", async () => 
   mock.triggerMessage(
     wrapSessionMessage({
       type: "usage.list_reports.response",
-      payload: { requestId: payload.requestId, error: null },
+      payload: {
+        requestId: payload.requestId,
+        error: null,
+        ...(includeBatch ? { reports: payload.reports } : {}),
+      },
     }),
   );
   mock.triggerMessage(
@@ -7263,6 +7267,56 @@ test("uses modern usage RPC when both capabilities are advertised", async () => 
   );
   expect(await result).toStrictEqual(payload);
   expect(updates).toEqual([report]);
+});
+
+test.each([
+  { report: { status: "available", windows: [] }, expected: { status: "available", windows: [] } },
+  {
+    report: { status: "error", windows: [], error: "Service unavailable" },
+    expected: { status: "error", error: "Service unavailable" },
+  },
+  {
+    report: { status: "unavailable", windows: [], error: "Sign in again" },
+    expected: { status: "unavailable", problem: { kind: "no_quota", detail: "Sign in again" } },
+  },
+  {
+    report: { status: "unavailable", windows: [] },
+    expected: { status: "unavailable", problem: { kind: "no_quota", detail: "" } },
+  },
+])("accepts 0.10 batch usage responses: $report", async ({ report, expected: expectedReport }) => {
+  const mock = createMockTransport();
+  const client = new DaemonClient({
+    url: "ws://test",
+    clientId: "clsk_unit_test",
+    logger: createMockLogger(),
+    reconnect: { enabled: false },
+    transportFactory: () => mock.transport,
+  });
+  clients.push(client);
+  const connected = client.connect();
+  mock.triggerOpen({ features: { usageSources: true } });
+  await connected;
+  const updates: unknown[] = [];
+  const result = client.listUsageReports({ requestId: "batch-usage" }, (update) =>
+    updates.push(update),
+  );
+  const entry = {
+    id: "codex:work",
+    sourceId: "codex",
+    sourceLabel: "Codex",
+    account: {},
+    fetchedAt: "2026-10-05T00:00:00.000Z",
+    report,
+  };
+  mock.triggerMessage(
+    wrapSessionMessage({
+      type: "usage.list_reports.response",
+      payload: { requestId: "batch-usage", reports: [entry] },
+    }),
+  );
+  const expected = { ...entry, report: expectedReport };
+  expect(await result).toEqual({ requestId: "batch-usage", reports: [expected] });
+  expect(updates).toEqual([expected]);
 });
 
 test("rejects usage requests when the host has neither capability", async () => {

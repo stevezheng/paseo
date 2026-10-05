@@ -845,6 +845,126 @@ describe("mapACPUsage", () => {
   });
 });
 
+describe("Grok response speed", () => {
+  test("uses per-response output usage and excludes TTFT, tools, and prompt completion hooks", async () => {
+    const session = createSessionWithConfig({ provider: "grok" });
+    const internal = asInternals<ACPSessionInternals>(session);
+    internal.sessionId = "session-1";
+    let resolvePrompt!: (response: PromptResponse) => void;
+    internal.connection = {
+      prompt: () =>
+        new Promise((resolve) => {
+          resolvePrompt = resolve;
+        }),
+    };
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+    const clock = vi.spyOn(performance, "now");
+    const chunk = async (at: number, text: string) => {
+      clock.mockReturnValue(at);
+      await session.sessionUpdate({
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "agent_thought_chunk",
+          content: { type: "text", text },
+        },
+      });
+    };
+    const complete = async (at: number, outputTokens: number, sessionId = "session-1") => {
+      clock.mockReturnValue(at);
+      await session.extNotification("_x.ai/session_notification", {
+        sessionId,
+        update: {
+          sessionUpdate: "response_completed",
+          usage: {
+            input_tokens: 1000,
+            output_tokens: outputTokens,
+            reasoning_tokens: 40,
+            cache_read_input_tokens: 100,
+          },
+        },
+      });
+    };
+    try {
+      clock.mockReturnValue(0);
+      await session.startTurn("hello");
+      await session.sessionUpdate({
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "usage_update",
+          used: 1200,
+          size: 256000,
+        },
+      });
+      await chunk(100, "");
+      await chunk(1000, "Thinking");
+      await complete(1500, 999, "other-session");
+      await complete(3000, 100);
+      expect(events.findLast((event) => event.type === "usage_updated")).toMatchObject({
+        usage: {
+          outputTokens: 100,
+          cachedInputTokens: 100,
+          outputTokensPerSecond: 50,
+          contextWindowUsedTokens: 1200,
+          contextWindowMaxTokens: 256000,
+        },
+      });
+      await chunk(60000, "Answer");
+      await complete(61000, 80);
+      expect(events.findLast((event) => event.type === "usage_updated")).toMatchObject({
+        usage: { outputTokens: 80, outputTokensPerSecond: 80 },
+      });
+      clock.mockReturnValue(90000);
+      resolvePrompt({ stopReason: "end_turn" });
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(events.findLast((event) => event.type === "turn_completed")).toMatchObject({
+        usage: { outputTokens: 80, outputTokensPerSecond: 80 },
+      });
+      const count = events.length;
+      await complete(95000, 999);
+      expect(events).toHaveLength(count);
+
+      await session.startTurn("next turn");
+      await complete(100000, 50);
+      expect(events.findLast((event) => event.type === "usage_updated")).toMatchObject({
+        usage: { outputTokens: 50, outputTokensPerSecond: undefined },
+      });
+      await chunk(110000, "One chunk");
+      await complete(110000, 50);
+      expect(events.findLast((event) => event.type === "usage_updated")).toMatchObject({
+        usage: { outputTokensPerSecond: undefined },
+      });
+      await chunk(120000, "Before a tool");
+      await session.sessionUpdate({
+        sessionId: "session-1",
+        update: {
+          sessionUpdate: "tool_call",
+          toolCallId: "tool-1",
+          title: "Read file",
+          status: "in_progress",
+        },
+      });
+      await complete(140000, 50);
+      expect(events.findLast((event) => event.type === "usage_updated")).toMatchObject({
+        usage: { outputTokensPerSecond: undefined },
+      });
+      await chunk(150000, "Malformed usage");
+      await complete(151000, -1);
+      expect(events.findLast((event) => event.type === "usage_updated")).toMatchObject({
+        usage: { outputTokensPerSecond: undefined },
+      });
+      await chunk(160000, "Next valid response");
+      await complete(161000, 20);
+      expect(events.findLast((event) => event.type === "usage_updated")).toMatchObject({
+        usage: { outputTokens: 20, outputTokensPerSecond: 20 },
+      });
+    } finally {
+      clock.mockRestore();
+    }
+  });
+});
+
 describe("ACP context-window usage", () => {
   async function emitUsageUpdate(update: {
     used: number;

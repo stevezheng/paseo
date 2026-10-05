@@ -1,3 +1,4 @@
+import { parseGrokResponseUsage } from "./grok-acp-usage.js";
 import { ACPProviderOptionsSchema } from "./acp-options.js";
 import { type ChildProcess, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomUUID } from "node:crypto";
@@ -1720,6 +1721,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
   private initialCommandsWaitTimeoutMs: number;
   private readonly extensionCommandsParser?: ACPExtensionCommandsParser;
   private currentTurnUsage: AgentUsage | undefined;
+  private responseFirstTokenAt: number | null = null;
   private activeForegroundTurnId: string | null = null;
   private fallbackAssistantMessageId: string | null = null;
   private closed = false;
@@ -1892,6 +1894,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     const turnId = randomUUID();
     const messageId = options?.clientMessageId ?? randomUUID();
     this.activeForegroundTurnId = turnId;
+    this.responseFirstTokenAt = null;
     this.fallbackAssistantMessageId = null;
     this.submittedUserMessageTurnId = null;
     this.emitBootstrapThreadEvent();
@@ -2585,6 +2588,17 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       return;
     }
 
+    if (this.activeForegroundTurnId && !this.replayingHistory) {
+      const update = params.update;
+      const isModelOutput =
+        update.sessionUpdate === "agent_message_chunk" ||
+        update.sessionUpdate === "agent_thought_chunk";
+      if (isModelOutput && update.content.type === "text" && update.content.text.length > 0) {
+        this.responseFirstTokenAt ??= performance.now();
+      }
+      // A missing response boundary must not let a tool's execution enter the next sample.
+      if (update.sessionUpdate === "tool_call") this.responseFirstTokenAt = null;
+    }
     const events = this.translateSessionUpdate(params.update);
     this.logger.trace(
       {
@@ -2627,12 +2641,41 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       "provider.acp.extension_notification",
     );
 
+    if (method === "_x.ai/session_notification") {
+      this.handleGrokResponseCompleted(params);
+    }
     const parsedCommands = this.extensionCommandsParser?.(method, params);
     if (parsedCommands) {
       this.applyResolvedCommands(parsedCommands, {
         sessionId: typeof params.sessionId === "string" ? params.sessionId : undefined,
       });
     }
+  }
+
+  private handleGrokResponseCompleted(params: Record<string, unknown>): void {
+    if (
+      params.sessionId !== this.sessionId ||
+      !this.activeForegroundTurnId ||
+      this.replayingHistory
+    )
+      return;
+    const update = params.update;
+    if (!isRecord(update) || update.sessionUpdate !== "response_completed") return;
+    const firstTokenAt = this.responseFirstTokenAt;
+    this.responseFirstTokenAt = null;
+    const usage = parseGrokResponseUsage(update.usage);
+    const durationMs = firstTokenAt === null ? 0 : performance.now() - firstTokenAt;
+    let outputTokensPerSecond: number | undefined;
+    if (usage?.outputTokens !== undefined && durationMs > 0) {
+      outputTokensPerSecond = (usage.outputTokens * 1000) / durationMs;
+    }
+    this.currentTurnUsage = { ...this.currentTurnUsage, ...usage, outputTokensPerSecond };
+    this.pushEvent({
+      type: "usage_updated",
+      provider: this.provider,
+      usage: this.currentTurnUsage,
+      turnId: this.activeForegroundTurnId,
+    });
   }
 
   // Cache an asynchronously-delivered slash-command batch and unblock any
@@ -3276,14 +3319,15 @@ export class ACPAgentSession implements AgentSession, ACPClient {
     if (contextWindowMaxTokens === undefined || contextWindowUsedTokens === undefined) {
       return;
     }
+    this.currentTurnUsage = {
+      ...this.currentTurnUsage,
+      contextWindowMaxTokens,
+      contextWindowUsedTokens,
+    };
     this.pushEvent({
       type: "usage_updated",
       provider: this.provider,
-      usage: {
-        ...this.currentTurnUsage,
-        contextWindowMaxTokens,
-        contextWindowUsedTokens,
-      },
+      usage: this.currentTurnUsage,
       turnId: this.activeForegroundTurnId ?? undefined,
     });
   }
@@ -3389,6 +3433,7 @@ export class ACPAgentSession implements AgentSession, ACPClient {
       this.cancelPendingPermissions();
     }
     this.activeForegroundTurnId = null;
+    this.responseFirstTokenAt = null;
     this.fallbackAssistantMessageId = null;
     if (this.submittedUserMessageTurnId === event.turnId) {
       this.submittedUserMessageTurnId = null;

@@ -1949,6 +1949,8 @@ export const ko: TranslationResources = {
     dismiss: "닫기",
   },
   contextWindow: {
+    responseSpeed: "최근 응답 평균 ≈ {{speed}} token/s",
+    responseSpeedNoData: "최근 응답 속도: 데이터 없음",
     noData: "컨텍스트 데이터 없음",
     accessibilityNoData: "컨텍스트 창: 컨텍스트 데이터 없음",
     title: "컨텍스트 윈도우",

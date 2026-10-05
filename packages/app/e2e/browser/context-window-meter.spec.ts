@@ -103,6 +103,10 @@ test.describe("context window meter", () => {
       const centroid = await progressArcCentroid(meter);
       expect(centroid.x).toBeGreaterThan(1);
       expect(centroid.y).toBeLessThan(-1);
+      await meter.hover();
+      await expect(page.getByTestId("context-window-response-speed")).toHaveText(
+        "Last response speed: No data",
+      );
     } finally {
       await session.cleanup();
     }

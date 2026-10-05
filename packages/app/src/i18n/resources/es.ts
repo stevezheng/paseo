@@ -1987,6 +1987,8 @@ export const es: TranslationResources = {
     dismiss: "Despedir",
   },
   contextWindow: {
+    responseSpeed: "Última respuesta ≈ {{speed}} token/s",
+    responseSpeedNoData: "Velocidad de última respuesta: Sin datos",
     noData: "No hay datos de contexto",
     accessibilityNoData: "Ventana de contexto: No hay datos de contexto",
     title: "ventana contextual",

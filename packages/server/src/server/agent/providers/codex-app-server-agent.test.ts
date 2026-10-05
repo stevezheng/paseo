@@ -6321,6 +6321,65 @@ describe("Codex app-server provider", () => {
     ]);
   });
 
+  test("measures decoding windows and excludes TTFT, stream gaps, and delayed usage", () => {
+    const session = createSession();
+    const events: AgentStreamEvent[] = [];
+    session.subscribe((event) => events.push(event));
+    const clock = vi.spyOn(performance, "now");
+    const notify = (at: number, method: string, params: unknown) => {
+      clock.mockReturnValue(at);
+      asInternals(session).handleNotification(method, params);
+    };
+    const delta = (at: number, itemId: string, text = "text") => {
+      notify(at, "item/agentMessage/delta", { itemId, delta: text });
+    };
+    const end = (at: number, id: string) => {
+      notify(at, "item/completed", { item: { id, type: "agentMessage", text: "text" } });
+    };
+    const usage = (outputTokens: number) => {
+      notify(200000, "thread/tokenUsage/updated", {
+        tokenUsage: { last: { outputTokens } },
+      });
+      return events.findLast((event) => event.type === "usage_updated");
+    };
+    try {
+      notify(0, "item/started", { item: { id: "first", type: "agentMessage" } });
+      delta(100, "first", "");
+      delta(1000, "first");
+      delta(2000, "first");
+      end(3000, "first");
+      expect(usage(100)).toMatchObject({ usage: { outputTokensPerSecond: 50 } });
+
+      // Each observed stream contributes its decoding duration, not the gap between streams.
+      notify(60000, "item/reasoning/summaryTextDelta", { itemId: "reasoning", delta: "Think" });
+      notify(61000, "item/completed", {
+        item: { id: "reasoning", type: "reasoning", summary: [] },
+      });
+      delta(90000, "answer");
+      end(91000, "answer");
+      expect(usage(160)).toMatchObject({ usage: { outputTokensPerSecond: 80 } });
+      expect(usage(160)).not.toHaveProperty("usage.outputTokensPerSecond");
+
+      delta(100000, "unfinished");
+      expect(usage(10)).not.toHaveProperty("usage.outputTokensPerSecond");
+      delta(110000, "zero-duration");
+      end(110000, "zero-duration");
+      expect(usage(10)).not.toHaveProperty("usage.outputTokensPerSecond");
+
+      notify(120000, "item/started", { item: { id: "hidden", type: "reasoning" } });
+      notify(121000, "item/completed", { item: { id: "hidden", type: "reasoning", summary: [] } });
+      delta(122000, "visible");
+      end(123000, "visible");
+      expect(usage(500)).not.toHaveProperty("usage.outputTokensPerSecond");
+
+      delta(130000, "interrupted");
+      notify(131000, "turn/completed", { turn: { status: "interrupted", error: null } });
+      expect(usage(10)).not.toHaveProperty("usage.outputTokensPerSecond");
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
   test("emits usage_updated on token usage updates and keeps usage on turn completion", () => {
     const session = createSession();
     const events: AgentStreamEvent[] = [];

@@ -186,6 +186,13 @@ describe("agent feature schemas", () => {
       labels: {},
     };
 
+    expect(AgentSnapshotPayloadSchema.parse(base).lastUsage).toBeUndefined();
+    expect(
+      AgentSnapshotPayloadSchema.parse({
+        ...base,
+        lastUsage: { outputTokens: 100, outputTokensPerSecond: 50 },
+      }).lastUsage,
+    ).toEqual({ outputTokens: 100, outputTokensPerSecond: 50 });
     expect(AgentSnapshotPayloadSchema.parse(base).activeTurn).toBeUndefined();
     expect(
       AgentSnapshotPayloadSchema.parse({

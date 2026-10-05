@@ -1992,6 +1992,8 @@ export const fr: TranslationResources = {
     dismiss: "Rejeter",
   },
   contextWindow: {
+    responseSpeed: "Dernière réponse ≈ {{speed}} token/s",
+    responseSpeedNoData: "Vitesse de la dernière réponse : Aucune donnée",
     noData: "Aucune donnée de contexte",
     accessibilityNoData: "Fenêtre de contexte : aucune donnée de contexte",
     title: "Fenêtre contextuelle",

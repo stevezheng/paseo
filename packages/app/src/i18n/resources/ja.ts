@@ -1959,6 +1959,8 @@ export const ja: TranslationResources = {
     dismiss: "閉じる",
   },
   contextWindow: {
+    responseSpeed: "直近の応答の平均 ≈ {{speed}} token/s",
+    responseSpeedNoData: "直近の応答速度：データなし",
     noData: "コンテキストデータがありません",
     accessibilityNoData: "コンテキストウィンドウ：コンテキストデータがありません",
     title: "コンテキストウィンドウ",

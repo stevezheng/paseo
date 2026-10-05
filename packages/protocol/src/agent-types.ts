@@ -192,6 +192,8 @@ export interface AgentUsage {
   inputTokens?: number;
   cachedInputTokens?: number;
   outputTokens?: number;
+  /** Estimated rate over the last observed model response, excluding tool execution. */
+  outputTokensPerSecond?: number;
   totalCostUsd?: number;
   contextWindowMaxTokens?: number;
   contextWindowUsedTokens?: number;

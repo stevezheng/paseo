@@ -8,6 +8,10 @@ import type { UserMessageImageAttachment } from "@/types/stream";
 import type { AgentAttachment } from "@getpaseo/protocol/messages";
 import { useDraftAgentCreateFlow, type DraftCreateAttempt } from "./create-flow";
 
+function captureError(error: unknown): unknown {
+  return error;
+}
+
 describe("useDraftAgentCreateFlow", () => {
   beforeEach(() => {
     useCreateFlowStore.setState({ pendingByDraftId: {} });
@@ -164,7 +168,6 @@ describe("useDraftAgentCreateFlow", () => {
       { initialProps: { provider: "codex" } as { provider: string | null } },
     );
     let submission!: Promise<unknown>;
-    const captureError = (error: unknown) => error;
     await act(async () => {
       submission = result.current
         .handleCreateFromInput({ text: "build this", attachments: [], cwd: "/repo" })
@@ -190,6 +193,34 @@ describe("useDraftAgentCreateFlow", () => {
     expect(result.current.draftAgent).toEqual({ provider: "claude" });
     expect(result.current.formErrorMessage).toBe("");
     expect(requestCount).toBe(2);
+  });
+
+  it("shows a structured create failure without object coercion", async () => {
+    const { result } = renderHook(() =>
+      useDraftAgentCreateFlow({
+        draftId: "draft-structured-error",
+        getPendingServerId: () => "server-1",
+        buildDraftAgent: () => ({ provider: "cursor" }),
+        createRequest: async () => {
+          throw {
+            error: {
+              code: -32603,
+              message: "Authentication failed. Run /login to continue.",
+            },
+          };
+        },
+        onCreateSuccess: () => undefined,
+      }),
+    );
+
+    await act(async () => {
+      await result.current
+        .handleCreateFromInput({ text: "build this", attachments: [], cwd: "/repo" })
+        .catch(captureError);
+    });
+
+    expect(result.current.formErrorMessage).toBe("Authentication failed. Run /login to continue.");
+    expect(result.current.formErrorMessage).not.toContain("[object Object]");
   });
 
   it("allows retrying an empty prompt when the draft still has context attachments", async () => {

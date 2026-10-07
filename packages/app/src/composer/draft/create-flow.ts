@@ -15,6 +15,7 @@ import {
 } from "@/types/stream";
 import type { AgentAttachment } from "@getpaseo/protocol/messages";
 import type { PendingMessageSubmission } from "@/composer/submission/model";
+import { toErrorMessage } from "@/utils/error-messages";
 
 const EMPTY_STREAM_ITEMS: StreamItem[] = [];
 
@@ -71,7 +72,7 @@ function prepareCreateAttempt<TDraftAgent>(
   try {
     return { tag: "creating", attempt, draftAgent: buildDraftAgent(attempt) };
   } catch (error) {
-    return { tag: "draft", errorMessage: error instanceof Error ? error.message : String(error) };
+    return { tag: "draft", errorMessage: toErrorMessage(error) };
   }
 }
 
@@ -241,16 +242,23 @@ export function useDraftAgentCreateFlow<TDraftAgent, TCreateResult>({
 
         await onCreateSuccess({ result: createResult.result, attempt });
       } catch (error) {
+        const message = toErrorMessage(error);
+        const resolvedMessage =
+          message !== "Unknown error" && message !== "[object Object]"
+            ? message
+            : t("composer.errors.failedToCreateAgent");
         const resolved =
-          error instanceof Error ? error : new Error(t("composer.errors.failedToCreateAgent"));
-        dispatch({ type: "CREATE_FAILED", message: resolved.message });
+          error instanceof Error && error.message === resolvedMessage
+            ? error
+            : new Error(resolvedMessage, { cause: error });
+        dispatch({ type: "CREATE_FAILED", message: resolvedMessage });
         markPendingCreateLifecycle({
           draftId,
           lifecycle: "abandoned",
-          errorMessage: resolved.message,
+          errorMessage: resolvedMessage,
         });
         onCreateError?.(resolved);
-        throw error;
+        throw resolved;
       }
     },
     [

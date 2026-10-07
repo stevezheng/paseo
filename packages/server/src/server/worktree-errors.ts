@@ -1,5 +1,6 @@
 import { MissingCheckoutTargetError } from "./resolve-worktree-creation-intent.js";
 import { BranchAlreadyCheckedOutError, UnknownBranchError } from "../utils/worktree.js";
+import { getErrorMessage } from "@getpaseo/protocol/error-utils";
 
 export type WorktreeWireErrorCode =
   | "branch_already_checked_out"
@@ -32,10 +33,7 @@ export function toWorktreeWireError(error: unknown): WorktreeWireError {
   if (error instanceof UnknownBranchError) {
     return { code: "unknown_branch", message: error.message };
   }
-  if (error instanceof Error) {
-    return { code: "unknown", message: error.message };
-  }
-  return { code: "unknown", message: String(error) };
+  return { code: "unknown", message: getErrorMessage(error) };
 }
 
 export function toWorktreeRequestError(error: unknown): WorktreeRequestError {

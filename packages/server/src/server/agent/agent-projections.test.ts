@@ -239,12 +239,7 @@ describe("toAgentPayload", () => {
     ]);
     const agent = createManagedAgent({
       pendingPermissions: pending,
-      lastUsage: {
-        inputTokens: 10,
-        outputTokens: 20,
-        outputTokensPerSecond: 33.4,
-        outputTokensPerSecondEstimated: true,
-      },
+      lastUsage: { inputTokens: 10, outputTokens: 20 },
       lastError: "boom",
     });
 

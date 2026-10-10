@@ -1940,7 +1940,6 @@ export const ar: TranslationResources = {
   },
   contextWindow: {
     responseSpeed: "متوسط آخر استجابة ≈ {{speed}} token/s",
-    responseSpeedEstimated: "آخر استجابة: ≈{{speed}} token/s (تقديري)",
     responseSpeedNoData: "سرعة آخر استجابة: لا توجد بيانات",
     noData: "لا توجد بيانات للسياق",
     accessibilityNoData: "نافذة السياق: لا توجد بيانات للسياق",

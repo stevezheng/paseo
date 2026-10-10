@@ -1988,7 +1988,6 @@ export const es: TranslationResources = {
   },
   contextWindow: {
     responseSpeed: "Última respuesta ≈ {{speed}} token/s",
-    responseSpeedEstimated: "Última respuesta: ≈{{speed}} token/s (estimado)",
     responseSpeedNoData: "Velocidad de última respuesta: Sin datos",
     noData: "No hay datos de contexto",
     accessibilityNoData: "Ventana de contexto: No hay datos de contexto",

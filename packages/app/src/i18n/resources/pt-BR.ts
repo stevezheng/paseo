@@ -1973,7 +1973,6 @@ export const ptBR: TranslationResources = {
   },
   contextWindow: {
     responseSpeed: "Última resposta ≈ {{speed}} token/s",
-    responseSpeedEstimated: "Última resposta: ≈{{speed}} token/s (estimado)",
     responseSpeedNoData: "Velocidade da última resposta: Sem dados",
     noData: "Sem dados de contexto",
     accessibilityNoData: "Janela de contexto: sem dados de contexto",

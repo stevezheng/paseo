@@ -1950,7 +1950,6 @@ export const ko: TranslationResources = {
   },
   contextWindow: {
     responseSpeed: "최근 응답 평균 ≈ {{speed}} token/s",
-    responseSpeedEstimated: "최근 응답: 약 {{speed}} token/s (추정)",
     responseSpeedNoData: "최근 응답 속도: 데이터 없음",
     noData: "컨텍스트 데이터 없음",
     accessibilityNoData: "컨텍스트 창: 컨텍스트 데이터 없음",

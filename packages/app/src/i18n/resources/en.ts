@@ -1965,7 +1965,6 @@ export const en = {
   },
   contextWindow: {
     responseSpeed: "Last response ≈ {{speed}} token/s",
-    responseSpeedEstimated: "Latest response: ~{{speed}} token/s (estimated)",
     responseSpeedNoData: "Last response speed: No data",
     noData: "No context data",
     accessibilityNoData: "Context window: No context data",

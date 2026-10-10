@@ -14,7 +14,6 @@ interface ContextWindowDetailsProps {
   } | null;
   sessionCost: string | null;
   outputTokensPerSecond: number | null;
-  outputTokensPerSecondEstimated?: boolean;
   /** The hover card and tooltip title themselves; the sheet's header carries the title instead. */
   showTitle: boolean;
   /** Whether the usage cards have a Refresh button; without one they show their freshness. */
@@ -31,7 +30,6 @@ export function ContextWindowDetails({
   context,
   sessionCost,
   outputTokensPerSecond,
-  outputTokensPerSecondEstimated = false,
   showTitle,
   refreshable,
 }: ContextWindowDetailsProps) {
@@ -57,12 +55,7 @@ export function ContextWindowDetails({
         )}
         <Text style={styles.detail} testID="context-window-response-speed">
           {outputTokensPerSecond !== null && Number.isFinite(outputTokensPerSecond)
-            ? t(
-                outputTokensPerSecondEstimated
-                  ? "contextWindow.responseSpeedEstimated"
-                  : "contextWindow.responseSpeed",
-                { speed: outputTokensPerSecond.toFixed(1) },
-              )
+            ? t("contextWindow.responseSpeed", { speed: outputTokensPerSecond.toFixed(1) })
             : t("contextWindow.responseSpeedNoData")}
         </Text>
         {sessionCost ? (

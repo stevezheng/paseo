@@ -1960,7 +1960,6 @@ export const ja: TranslationResources = {
   },
   contextWindow: {
     responseSpeed: "直近の応答の平均 ≈ {{speed}} token/s",
-    responseSpeedEstimated: "直近の応答：約 {{speed}} token/s（推定）",
     responseSpeedNoData: "直近の応答速度：データなし",
     noData: "コンテキストデータがありません",
     accessibilityNoData: "コンテキストウィンドウ：コンテキストデータがありません",

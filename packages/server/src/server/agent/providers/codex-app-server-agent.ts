@@ -3494,7 +3494,7 @@ export class CodexAppServerAgentSession implements AgentSession {
   private latestUsage: AgentUsage | undefined;
   private responseWindows = new Map<
     string,
-    { firstTokenAt: number | null; reasoningStartedAt: number | null; endedAt: number | null }
+    { firstTokenAt: number | null; endedAt: number | null }
   >();
   private latestPlanResult: { callId: string; text: string; turnId: string | null } | null = null;
   private readonly userMessageTurnIndexes = new Map<string, number>();
@@ -5444,11 +5444,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       if (!parsed.delta.length) return;
       const window = this.responseWindows.get(parsed.itemId);
       if (window?.firstTokenAt != null) return;
-      this.responseWindows.set(parsed.itemId, {
-        firstTokenAt: performance.now(),
-        reasoningStartedAt: null,
-        endedAt: null,
-      });
+      this.responseWindows.set(parsed.itemId, { firstTokenAt: performance.now(), endedAt: null });
       return;
     }
     if (parsed.kind !== "item_started" && parsed.kind !== "item_completed") return;
@@ -5457,33 +5453,25 @@ export class CodexAppServerAgentSession implements AgentSession {
     if (!isModelItem) return;
     const window = this.responseWindows.get(parsed.item.id);
     if (parsed.kind === "item_started") {
-      if (!window)
-        this.responseWindows.set(parsed.item.id, {
-          firstTokenAt: null,
-          reasoningStartedAt: parsed.item.type === "reasoning" ? performance.now() : null,
-          endedAt: null,
-        });
+      if (!window) this.responseWindows.set(parsed.item.id, { firstTokenAt: null, endedAt: null });
       return;
     }
     if (window && window.endedAt === null) window.endedAt = performance.now();
   }
 
-  private consumeResponseDuration(): { durationMs: number; estimated: boolean } | null {
+  private consumeResponseDuration(): number | null {
     const windows = [...this.responseWindows.values()];
     this.responseWindows.clear();
     if (!windows.length) return null;
     let durationMs = 0;
-    let estimated = false;
     for (const window of windows) {
-      // Hidden reasoning has no token deltas; its item lifetime is an explicit estimate.
-      const startedAt = window.firstTokenAt ?? window.reasoningStartedAt;
-      if (startedAt === null || window.endedAt === null) return null;
-      estimated ||= window.firstTokenAt === null;
-      const elapsed = window.endedAt - startedAt;
+      // Usage covers the whole model response. Do not divide its tokens by a partial window.
+      if (window.firstTokenAt === null || window.endedAt === null) return null;
+      const elapsed = window.endedAt - window.firstTokenAt;
       if (elapsed <= 0) return null;
       durationMs += elapsed;
     }
-    return { durationMs, estimated };
+    return durationMs;
   }
 
   private dispatchSubAgentNotification(parsed: ParsedCodexNotification, callId: string): void {
@@ -6274,16 +6262,15 @@ export class CodexAppServerAgentSession implements AgentSession {
     parsed: Extract<ParsedCodexNotification, { kind: "token_usage_updated" }>,
   ): void {
     this.latestUsage = toAgentUsage(parsed.tokenUsage);
-    const timing = this.consumeResponseDuration();
+    const durationMs = this.consumeResponseDuration();
     const outputTokens = this.latestUsage?.outputTokens;
     const hasOutputTokens =
       outputTokens !== undefined && Number.isFinite(outputTokens) && outputTokens > 0;
-    if (timing !== null && hasOutputTokens) {
+    if (durationMs !== null && hasOutputTokens) {
       // Transport arrival times approximate decoding; TTFT and gaps between streams are excluded.
       this.latestUsage = {
         ...this.latestUsage,
-        outputTokensPerSecond: (outputTokens * 1000) / timing.durationMs,
-        outputTokensPerSecondEstimated: timing.estimated,
+        outputTokensPerSecond: (outputTokens * 1000) / durationMs,
       };
     }
     if (this.latestUsage) {

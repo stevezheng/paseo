@@ -3492,10 +3492,6 @@ export class CodexAppServerAgentSession implements AgentSession {
   private warnedInvalidNotificationPayloads = new Set<string>();
   private warnedIncompleteEditToolCallIds = new Set<string>();
   private latestUsage: AgentUsage | undefined;
-  private responseWindows = new Map<
-    string,
-    { firstTokenAt: number | null; endedAt: number | null }
-  >();
   private latestPlanResult: { callId: string; text: string; turnId: string | null } | null = null;
   private readonly userMessageTurnIndexes = new Map<string, number>();
   private readonly userMessageTurnIds: string[] = [];
@@ -5435,43 +5431,7 @@ export class CodexAppServerAgentSession implements AgentSession {
       this.dispatchSubAgentNotification(parsed, route.callId);
       return;
     }
-    this.trackResponseTiming(parsed);
     this.dispatchParsedNotification(parsed);
-  }
-
-  private trackResponseTiming(parsed: ParsedCodexNotification): void {
-    if (parsed.kind === "agent_message_delta" || parsed.kind === "reasoning_delta") {
-      if (!parsed.delta.length) return;
-      const window = this.responseWindows.get(parsed.itemId);
-      if (window?.firstTokenAt != null) return;
-      this.responseWindows.set(parsed.itemId, { firstTokenAt: performance.now(), endedAt: null });
-      return;
-    }
-    if (parsed.kind !== "item_started" && parsed.kind !== "item_completed") return;
-    if (parsed.source !== "item" || !parsed.item.id) return;
-    const isModelItem = parsed.item.type === "agentMessage" || parsed.item.type === "reasoning";
-    if (!isModelItem) return;
-    const window = this.responseWindows.get(parsed.item.id);
-    if (parsed.kind === "item_started") {
-      if (!window) this.responseWindows.set(parsed.item.id, { firstTokenAt: null, endedAt: null });
-      return;
-    }
-    if (window && window.endedAt === null) window.endedAt = performance.now();
-  }
-
-  private consumeResponseDuration(): number | null {
-    const windows = [...this.responseWindows.values()];
-    this.responseWindows.clear();
-    if (!windows.length) return null;
-    let durationMs = 0;
-    for (const window of windows) {
-      // Usage covers the whole model response. Do not divide its tokens by a partial window.
-      if (window.firstTokenAt === null || window.endedAt === null) return null;
-      const elapsed = window.endedAt - window.firstTokenAt;
-      if (elapsed <= 0) return null;
-      durationMs += elapsed;
-    }
-    return durationMs;
   }
 
   private dispatchSubAgentNotification(parsed: ParsedCodexNotification, callId: string): void {
@@ -6211,7 +6171,6 @@ export class CodexAppServerAgentSession implements AgentSession {
   }
 
   private resetTurnTrackingState(): void {
-    this.responseWindows.clear();
     this.latestPlanResult = null;
     this.emittedItemStartedIds.clear();
     this.emittedItemCompletedIds.clear();
@@ -6262,17 +6221,6 @@ export class CodexAppServerAgentSession implements AgentSession {
     parsed: Extract<ParsedCodexNotification, { kind: "token_usage_updated" }>,
   ): void {
     this.latestUsage = toAgentUsage(parsed.tokenUsage);
-    const durationMs = this.consumeResponseDuration();
-    const outputTokens = this.latestUsage?.outputTokens;
-    const hasOutputTokens =
-      outputTokens !== undefined && Number.isFinite(outputTokens) && outputTokens > 0;
-    if (durationMs !== null && hasOutputTokens) {
-      // Transport arrival times approximate decoding; TTFT and gaps between streams are excluded.
-      this.latestUsage = {
-        ...this.latestUsage,
-        outputTokensPerSecond: (outputTokens * 1000) / durationMs,
-      };
-    }
     if (this.latestUsage) {
       this.notifySubscribers({
         type: "usage_updated",

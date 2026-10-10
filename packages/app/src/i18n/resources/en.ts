@@ -1964,8 +1964,6 @@ export const en = {
     dismiss: "Dismiss",
   },
   contextWindow: {
-    responseSpeed: "Last response ≈ {{speed}} token/s",
-    responseSpeedNoData: "Last response speed: No data",
     noData: "No context data",
     accessibilityNoData: "Context window: No context data",
     title: "Context window",

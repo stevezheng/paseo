@@ -1917,8 +1917,6 @@ export const zhCN: TranslationResources = {
     dismiss: "关闭",
   },
   contextWindow: {
-    responseSpeed: "最近响应均速 ≈ {{speed}} token/s",
-    responseSpeedNoData: "最近响应均速：暂无数据",
     noData: "暂无上下文数据",
     accessibilityNoData: "上下文窗口：暂无上下文数据",
     title: "上下文窗口",

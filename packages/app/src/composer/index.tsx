@@ -274,7 +274,6 @@ function buildAgentStateSelector(serverId: string, agentId: string) {
       contextWindowMaxTokens: agent?.lastUsage?.contextWindowMaxTokens ?? null,
       contextWindowUsedTokens: agent?.lastUsage?.contextWindowUsedTokens ?? null,
       totalCostUsd: agent?.lastUsage?.totalCostUsd ?? null,
-      outputTokensPerSecond: agent?.lastUsage?.outputTokensPerSecond ?? null,
       model: agent?.model ?? null,
     };
   };
@@ -2038,7 +2037,6 @@ function ComposerContentImpl({
             maxTokens={agentState.contextWindowMaxTokens}
             usedTokens={agentState.contextWindowUsedTokens}
             totalCostUsd={agentState.totalCostUsd}
-            outputTokensPerSecond={agentState.outputTokensPerSecond}
             glyphSize={contextWindowMeterGlyphSize}
           />
         </View>
@@ -2050,7 +2048,6 @@ function ComposerContentImpl({
       agentState.contextWindowMaxTokens,
       agentState.contextWindowUsedTokens,
       agentState.totalCostUsd,
-      agentState.outputTokensPerSecond,
       contextWindowMeterGlyphSize,
     ],
   );

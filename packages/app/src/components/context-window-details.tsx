@@ -13,7 +13,6 @@ interface ContextWindowDetailsProps {
     maxTokens: number;
   } | null;
   sessionCost: string | null;
-  outputTokensPerSecond: number | null;
   /** The hover card and tooltip title themselves; the sheet's header carries the title instead. */
   showTitle: boolean;
   /** Whether the usage cards have a Refresh button; without one they show their freshness. */
@@ -29,7 +28,6 @@ export function ContextWindowDetails({
   agentId,
   context,
   sessionCost,
-  outputTokensPerSecond,
   showTitle,
   refreshable,
 }: ContextWindowDetailsProps) {
@@ -53,11 +51,6 @@ export function ContextWindowDetails({
         ) : (
           <Text style={styles.detail}>{t("contextWindow.noData")}</Text>
         )}
-        <Text style={styles.detail} testID="context-window-response-speed">
-          {outputTokensPerSecond !== null && Number.isFinite(outputTokensPerSecond)
-            ? t("contextWindow.responseSpeed", { speed: outputTokensPerSecond.toFixed(1) })
-            : t("contextWindow.responseSpeedNoData")}
-        </Text>
         {sessionCost ? (
           <Text style={styles.detail}>{t("contextWindow.sessionCost", { cost: sessionCost })}</Text>
         ) : null}

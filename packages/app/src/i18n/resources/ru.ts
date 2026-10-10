@@ -1972,8 +1972,6 @@ export const ru: TranslationResources = {
     dismiss: "Закрыть",
   },
   contextWindow: {
-    responseSpeed: "Последний ответ ≈ {{speed}} token/s",
-    responseSpeedNoData: "Скорость последнего ответа: Нет данных",
     noData: "Нет данных о контексте",
     accessibilityNoData: "Контекстное окно: нет данных о контексте",
     title: "Контекстное окно",
